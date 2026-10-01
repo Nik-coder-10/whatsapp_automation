@@ -1,0 +1,55 @@
+import Image from "next/image";
+import Link from "next/link";
+import { PriceDisplay } from "@/components/ui/PriceDisplay";
+import { StockBadge } from "@/components/ui/StatusBadge";
+import { priceToPaise, type CatalogProduct } from "@/lib/catalog/products";
+
+/**
+ * Catalogue product card (homepage + future /products grid).
+ * Links to the product detail route (built in the catalogue phase);
+ * the CTA is intentionally a link — no cart is wired yet.
+ */
+export function ProductCard({ product }: { product: CatalogProduct }) {
+  const image = product.images[0] ?? "/images/products/placeholder.svg";
+  return (
+    <article className="flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
+      <Link
+        href={`/products/${product.slug}`}
+        aria-label={`View ${product.name}`}
+        className="block bg-brand-50"
+      >
+        <Image
+          src={image}
+          alt={`${product.name} — product photo coming soon`}
+          width={400}
+          height={300}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+          className="aspect-[4/3] w-full object-cover"
+        />
+      </Link>
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold tracking-wide text-brand-700 uppercase">
+            {product.category}
+          </p>
+          <StockBadge quantity={product.stock_quantity} />
+        </div>
+        <h3 className="text-base font-bold text-zinc-900">
+          <Link href={`/products/${product.slug}`} className="hover:text-brand-700 hover:underline">
+            {product.name}
+          </Link>
+        </h3>
+        <p className="line-clamp-2 text-sm text-zinc-600">{product.description}</p>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+          <PriceDisplay amountPaise={priceToPaise(product.price)} unitNote="excl. GST" />
+          <Link
+            href={`/products/${product.slug}`}
+            className="inline-flex h-9 shrink-0 items-center rounded-md bg-brand-800 px-3 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            View
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}

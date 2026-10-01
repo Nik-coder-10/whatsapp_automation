@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/**
+ * Trolift industrial design tokens (Tailwind v4 theme).
+ * Solid navy + steel neutrals + one safety-amber accent.
+ * No gradients, no glass — flat surfaces, 6px default radius.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+
+  --color-brand-50: #f2f5f9;
+  --color-brand-100: #e2e9f1;
+  --color-brand-200: #c3d2e3;
+  --color-brand-300: #9ab2cc;
+  --color-brand-400: #6b8db2;
+  --color-brand-500: #486e97;
+  --color-brand-600: #35587e;
+  --color-brand-700: #2b4766;
+  --color-brand-800: #1e344d;
+  --color-brand-900: #16283c;
+  --color-brand-950: #0e1b29;
+
+  --color-paper: #f6f6f4;
+  --color-ink: #1a1d21;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere (a11y). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skip link for keyboard / screen-reader users. */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 100;
+  background: var(--color-brand-900);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+::selection {
+  background: var(--color-brand-200);
+}
