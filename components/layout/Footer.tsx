@@ -63,7 +63,7 @@ export function Footer() {
           <p className="text-sm font-bold tracking-wide text-white uppercase">Buying info</p>
           <ul className="mt-3 flex flex-col gap-2 text-sm text-brand-200">
             <li>GST invoice on every order</li>
-            <li>Bulk / project pricing available</li>
+            <li>Volume pricing on request</li>
             <li>Delivery across India by pincode</li>
             <li>
               <Link href="/#contact" className="font-semibold text-amber-400 hover:text-amber-300 hover:underline">

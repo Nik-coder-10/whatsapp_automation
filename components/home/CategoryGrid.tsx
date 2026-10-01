@@ -1,7 +1,10 @@
-import { PRODUCT_CATEGORIES } from "@/lib/catalog/products";
+import { EmptyState } from "@/components/ui/States";
+import { getCategories } from "@/lib/catalog/queries";
 
-/** Category browse grid: 2 cols mobile → 3 tablet → 6 desktop (compact) → cards. */
-export function CategoryGrid() {
+/** Category browse grid fed by live catalogue data (DB-first, fallback static). */
+export async function CategoryGrid() {
+  const categories = await getCategories();
+
   return (
     <section aria-labelledby="categories-heading" id="categories" className="scroll-mt-20">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
@@ -12,22 +15,29 @@ export function CategoryGrid() {
           </h2>
         </div>
       </div>
-      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {PRODUCT_CATEGORIES.map((c) => (
-          <li key={c.slug} className="rounded-lg border border-zinc-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-base font-bold text-zinc-900">{c.name}</h3>
-              <span className="shrink-0 rounded bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-800">
-                {c.productCount} {c.productCount === 1 ? "item" : "items"}
-              </span>
-            </div>
-            <p className="mt-1.5 text-sm leading-6 text-zinc-600">{c.blurb}</p>
-            <p className="mt-3 text-sm font-semibold text-brand-700">
-              Full range coming with the catalogue →
-            </p>
-          </li>
-        ))}
-      </ul>
+      {categories.length === 0 ? (
+        <EmptyState
+          title="Categories coming soon"
+          message="Our equipment range is being loaded into the catalogue. Check the featured products below or contact sales."
+        />
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {categories.map((c) => (
+            <li key={c.slug} className="rounded-lg border border-zinc-200 bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base font-bold text-zinc-900">{c.name}</h3>
+                <span className="shrink-0 rounded bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-800">
+                  {c.productCount} {c.productCount === 1 ? "item" : "items"}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm leading-6 text-zinc-600">{c.blurb}</p>
+              <p className="mt-3 text-sm font-semibold text-brand-700">
+                Full range coming with the catalogue →
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

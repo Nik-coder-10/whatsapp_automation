@@ -5,11 +5,18 @@ import { SiteShell } from "@/components/layout/SiteShell";
 import { siteConfig } from "@/config/site";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteConfig.url),
   title: {
     default: `${siteConfig.name} — B2B Ordering Platform`,
     template: `%s | ${siteConfig.name}`,
   },
   description: siteConfig.description,
+  openGraph: {
+    type: "website",
+    siteName: siteConfig.name,
+    title: `${siteConfig.name} — Material-Handling Equipment, Ordered Simply`,
+    description: siteConfig.description,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

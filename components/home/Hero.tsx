@@ -17,8 +17,8 @@ export function Hero() {
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-brand-100">
             Pallet trucks, stackers, trolleys, dock equipment and more —
-            with transparent pricing, GST invoicing and delivery across
-            India, all the way to order confirmation on WhatsApp.
+            with transparent pricing, GST invoicing and delivery verified
+            by pincode before you pay.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -38,8 +38,8 @@ export function Hero() {
             {(
               [
                 ["GST invoice", "on every order"],
-                ["Pan-India", "pincode-checked delivery"],
-                ["Bulk pricing", "for projects & plants"],
+                ["Pincode-checked", "delivery verified pre-payment"],
+                ["Volume pricing", "available on request"],
               ] as [string, string][]
             ).map(([term, desc]) => (
               <div key={term}>

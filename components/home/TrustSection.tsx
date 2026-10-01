@@ -1,11 +1,11 @@
 const PILLARS = [
   {
     title: "Built for industry",
-    desc: "Rated capacities, IS-standard builds and test certificates where they matter — spec sheets before sales talk.",
+    desc: "Published load ratings and spec sheets up front — compare capacities before you talk to sales.",
   },
   {
     title: "Honest B2B pricing",
-    desc: "Published ex-GST prices, quantity slabs for projects, and freight disclosed up front by pincode.",
+    desc: "Published ex-GST prices, volume pricing on request, and freight disclosed up front by pincode.",
   },
   {
     title: "Delivery you can plan around",

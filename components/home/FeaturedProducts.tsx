@@ -1,8 +1,12 @@
+import Link from "next/link";
 import { ProductCard } from "@/components/products/ProductCard";
-import { FEATURED_PRODUCTS } from "@/lib/catalog/products";
+import { EmptyState } from "@/components/ui/States";
+import { getFeaturedProducts } from "@/lib/catalog/queries";
 
-/** Featured products: 1-col mobile → 2 tablet → 4 desktop. */
-export function FeaturedProducts() {
+/** Featured products, fetched live from Supabase (active only). */
+export async function FeaturedProducts() {
+  const products = await getFeaturedProducts();
+
   return (
     <section aria-labelledby="featured-heading" id="featured" className="scroll-mt-20">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -17,13 +21,27 @@ export function FeaturedProducts() {
           </p>
         </div>
       </div>
-      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {FEATURED_PRODUCTS.map((p) => (
-          <li key={p.id}>
-            <ProductCard product={p} />
-          </li>
-        ))}
-      </ul>
+      {products.length === 0 ? (
+        <EmptyState
+          title="No featured products right now"
+          message="Our catalogue is being stocked. Contact sales for current availability and quotes."
+        />
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {products.map((p) => (
+            <li key={p.id}>
+              <ProductCard product={p} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-4 text-sm text-zinc-500">
+        Need something specific?{" "}
+        <Link href="#contact" className="font-semibold text-brand-700 hover:underline">
+          Ask sales for a quote
+        </Link>
+        .
+      </p>
     </section>
   );
 }
