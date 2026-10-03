@@ -1,20 +1,22 @@
 import Link from "next/link";
+import { buildCatalogueHref } from "@/lib/catalog/products";
+import type { FilterQuery } from "@/components/products/CategoryFilter";
 
-/** Page navigation preserving the active category filter. */
+/** Page navigation preserving every active filter. */
 export function Pagination({
   page,
   totalPages,
   categorySlug,
+  query,
 }: {
   page: number;
   totalPages: number;
   categorySlug?: string;
+  query: FilterQuery;
 }) {
   if (totalPages <= 1) return null;
   const hrefFor = (p: number) =>
-    categorySlug
-      ? `/products?category=${categorySlug}&page=${p}`
-      : `/products?page=${p}`;
+    buildCatalogueHref({ ...query, categorySlug, page: p });
   const prev = page > 1;
   const next = page < totalPages;
 

@@ -19,6 +19,7 @@ import {
   groupByCategory,
   type CatalogProduct,
   type CatalogueParams,
+  type CatalogueSort,
   type ProductCategory,
 } from "@/lib/catalog/products";
 
@@ -194,7 +195,15 @@ export const getCategories = cache(
 export async function getCataloguePage(
   filters: CatalogueParams,
 ): Promise<CatalogueResult> {
-  const { categorySlug, page, pageSize } = filters;
+  const {
+    categorySlug,
+    q,
+    sort = "featured",
+    minPrice,
+    maxPrice,
+    page,
+    pageSize,
+  } = filters;
   const supabase = await getServerClient();
   const staticActive = ALL_PRODUCTS.filter((p) => p.is_active);
 
@@ -236,20 +245,110 @@ export async function getCataloguePage(
     return empty(categories, true, supabase !== null);
   }
 
-  // 3. Products: static slice offline, counted+ranged query live.
+  // 3. Products.
+  const matchesPrice = (p: CatalogProduct) =>
+    (minPrice === undefined || Number(p.price) >= minPrice) &&
+    (maxPrice === undefined || Number(p.price) <= maxPrice);
+  const matchesQuery = (p: CatalogProduct) => {
+    if (!q) return true;
+    const hay = `${p.name} ${p.category} ${p.description} ${p.slug}`.toLowerCase();
+    return hay.includes(q.toLowerCase());
+  };
+  const rankOf = (p: CatalogProduct) => {
+    if (!q) return 0;
+    const needle = q.toLowerCase();
+    if (p.name.toLowerCase().includes(needle)) return 0;
+    if (p.category.toLowerCase().includes(needle)) return 1;
+    return 2;
+  };
+  const sortStatic = (items: CatalogProduct[]): CatalogProduct[] => {
+    const arr = [...items];
+    switch (sort) {
+      case "price_asc":
+        return arr.sort((a, b) => Number(a.price) - Number(b.price));
+      case "price_desc":
+        return arr.sort((a, b) => Number(b.price) - Number(a.price));
+      case "name_asc":
+        return arr.sort((a, b) => a.name.localeCompare(b.name));
+      case "relevance":
+        return arr.sort(
+          (a, b) => rankOf(a) - rankOf(b) || a.name.localeCompare(b.name),
+        );
+      case "featured":
+      default:
+        return arr;
+    }
+  };
+
+  // Offline / unreachable: same semantics over static dev data.
   if (!supabase) {
     return pageOf(
       categories,
       activeCategory,
-      staticActive.filter(
-        (p) => !activeCategory || p.category === activeCategory.name,
+      sortStatic(
+        staticActive.filter(
+          (p) =>
+            (!activeCategory || p.category === activeCategory.name) &&
+            matchesPrice(p) &&
+            matchesQuery(p),
+        ),
       ),
       false,
     );
   }
+
+  // Live search (query, price window and/or explicit relevance sort):
+  // one RPC call returning the page plus the total — no full-table
+  // pull, ever. Plain browsing stays on the simple ranged query.
+  const needsSearch =
+    Boolean(q) ||
+    sort === "relevance" ||
+    minPrice !== undefined ||
+    maxPrice !== undefined;
+  if (needsSearch) {
+    const searched = await queryLiveSearch(supabase, {
+      q: q ?? "",
+      categoryName: activeCategory?.name ?? null,
+      minPrice,
+      maxPrice,
+      sort: q ? sort : "relevance",
+      page,
+      pageSize,
+    });
+    if (searched) {
+      return {
+        products: searched.products,
+        categories,
+        activeCategory,
+        unknownCategory: false,
+        total: searched.total,
+        page,
+        pageSize,
+        totalPages:
+          searched.total === 0 ? 0 : Math.ceil(searched.total / pageSize),
+        live: true,
+      };
+    }
+    return pageOf(
+      categories,
+      activeCategory,
+      sortStatic(
+        staticActive.filter(
+          (p) =>
+            (!activeCategory || p.category === activeCategory.name) &&
+            matchesPrice(p) &&
+            matchesQuery(p),
+        ),
+      ),
+      false,
+    );
+  }
+
+  // Live browse (no query): counted + ranged query.
   const ranged = await queryLiveRange(
     supabase,
     activeCategory?.name ?? null,
+    sort,
     page,
     pageSize,
   );
@@ -257,8 +356,12 @@ export async function getCataloguePage(
     return pageOf(
       categories,
       activeCategory,
-      staticActive.filter(
-        (p) => !activeCategory || p.category === activeCategory.name,
+      sortStatic(
+        staticActive.filter(
+          (p) =>
+            (!activeCategory || p.category === activeCategory.name) &&
+            matchesPrice(p),
+        ),
       ),
       false,
     );
@@ -303,15 +406,31 @@ export async function getCataloguePage(
 async function queryLiveRange(
   supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
   categoryName: string | null,
+  sort: CatalogueSort,
   page: number,
   pageSize: number,
 ): Promise<{ products: CatalogProduct[]; total: number } | null> {
   let query = supabase
     .from("products")
     .select(PRODUCT_COLUMNS, { count: "exact" })
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
+    .eq("is_active", true);
   if (categoryName) query = query.eq("category", categoryName);
+  switch (sort) {
+    case "price_asc":
+      query = query.order("price", { ascending: true });
+      break;
+    case "price_desc":
+      query = query.order("price", { ascending: false });
+      break;
+    case "name_asc":
+      query = query.order("name", { ascending: true });
+      break;
+    case "featured":
+    case "relevance":
+    default:
+      query = query.order("created_at", { ascending: false });
+      break;
+  }
   const from = (page - 1) * pageSize;
   const { data, error, count } = await query.range(from, from + pageSize - 1);
   if (error) {
@@ -319,4 +438,53 @@ async function queryLiveRange(
     return null;
   }
   return { products: toCatalog(data), total: count ?? 0 };
+}
+
+/**
+ * Single RPC call for search / relevance / price windows. Returns the
+ * page plus the total, or null on error (caller falls back).
+ */
+async function queryLiveSearch(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  args: {
+    q: string;
+    categoryName: string | null;
+    minPrice?: number;
+    maxPrice?: number;
+    sort: CatalogueSort;
+    page: number;
+    pageSize: number;
+  },
+): Promise<{ products: CatalogProduct[]; total: number } | null> {
+  const { data, error } = await supabase.rpc("search_products", {
+    p_query: args.q,
+    p_category: args.categoryName,
+    p_min_price: args.minPrice ?? null,
+    p_max_price: args.maxPrice ?? null,
+    p_sort: args.sort,
+    p_limit: args.pageSize,
+    p_offset: (args.page - 1) * args.pageSize,
+  });
+  if (error) {
+    console.error("[catalog] search RPC failed:", error.message);
+    return null;
+  }
+  const rows = (data ?? []) as unknown as Array<
+    CatalogProduct & { total_count: number | string }
+  >;
+  return {
+    products: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      description: row.description,
+      category: row.category,
+      specifications: row.specifications,
+      price: row.price,
+      stock_quantity: row.stock_quantity,
+      images: row.images,
+      is_active: row.is_active,
+    })),
+    total: rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : 0,
+  };
 }

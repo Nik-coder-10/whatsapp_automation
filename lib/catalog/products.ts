@@ -231,9 +231,41 @@ export function formatSpecEntries(specs: Json): SpecEntry[] {
 export const CATALOGUE_DEFAULT_PAGE_SIZE = 12;
 export const CATALOGUE_MAX_PAGE_SIZE = 48;
 
+export type CatalogueSort =
+  | "relevance"
+  | "featured"
+  | "price_asc"
+  | "price_desc"
+  | "name_asc";
+
+export const SORT_OPTIONS: ReadonlyArray<{ value: CatalogueSort; label: string }> = [
+  { value: "relevance", label: "Best match" },
+  { value: "featured", label: "Featured" },
+  { value: "price_asc", label: "Price: Low to High" },
+  { value: "price_desc", label: "Price: High to Low" },
+  { value: "name_asc", label: "Name: A to Z" },
+];
+
+const SORT_VALUES: ReadonlySet<string> = new Set(
+  SORT_OPTIONS.map((o) => o.value),
+);
+
+export function isCatalogueSort(v: string): v is CatalogueSort {
+  return SORT_VALUES.has(v);
+}
+
 export interface CatalogueParams {
   /** Category slug from the URL (validated against live categories). */
   categorySlug?: string;
+  /** Search text (max 100 chars, trimmed). */
+  q?: string;
+  /** Defaults to "featured" (newest first). */
+  sort?: CatalogueSort;
+  /** Rupee bounds (undefined = unbounded). */
+  minPrice?: number;
+  maxPrice?: number;
+  /** Set when both bounds are valid but min > max (range ignored). */
+  priceError?: string;
   page: number;
   pageSize: number;
 }
@@ -251,8 +283,12 @@ export function parseCatalogueParams(
     Array.isArray(v) ? v[0] : v;
 
   const rawCategory = (first(searchParams["category"]) ?? "").trim();
+  const rawQ = (first(searchParams["q"]) ?? "").trim().slice(0, 100);
+  const rawSort = (first(searchParams["sort"]) ?? "").trim();
   const rawPage = Number(first(searchParams["page"]));
   const rawSize = Number(first(searchParams["pageSize"]));
+  const rawMin = Number(first(searchParams["min"]));
+  const rawMax = Number(first(searchParams["max"]));
 
   const page =
     Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
@@ -261,10 +297,50 @@ export function parseCatalogueParams(
     CATALOGUE_MAX_PAGE_SIZE,
     Math.max(1, size),
   );
+  const minPrice =
+    Number.isFinite(rawMin) && rawMin >= 0 ? rawMin : undefined;
+  const maxPrice =
+    Number.isFinite(rawMax) && rawMax >= 0 ? rawMax : undefined;
+  const priceError =
+    minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice
+      ? "Minimum price is higher than maximum price — the price filter was ignored."
+      : undefined;
+  const sort: CatalogueSort = isCatalogueSort(rawSort)
+    ? rawSort
+    : rawQ === ""
+      ? "featured"
+      : "relevance";
 
   return {
     ...(rawCategory === "" ? {} : { categorySlug: rawCategory }),
+    ...(rawQ === "" ? {} : { q: rawQ }),
+    sort,
+    ...(minPrice === undefined || priceError ? {} : { minPrice }),
+    ...(maxPrice === undefined || priceError ? {} : { maxPrice }),
+    ...(priceError ? { priceError } : {}),
     page,
     pageSize,
   };
+}
+
+/** Canonical listing URL for a filter set (defaults omitted). */
+export function buildCatalogueHref(args: {
+  categorySlug?: string;
+  q?: string;
+  sort?: CatalogueSort;
+  minPrice?: number;
+  maxPrice?: number;
+  page?: number;
+}): string {
+  const params = new URLSearchParams();
+  if (args.q) params.set("q", args.q);
+  if (args.categorySlug) params.set("category", args.categorySlug);
+  if (args.sort && args.sort !== "featured" && !(args.sort === "relevance" && !args.q)) {
+    params.set("sort", args.sort);
+  }
+  if (args.minPrice !== undefined) params.set("min", String(args.minPrice));
+  if (args.maxPrice !== undefined) params.set("max", String(args.maxPrice));
+  if (args.page !== undefined && args.page > 1) params.set("page", String(args.page));
+  const qs = params.toString();
+  return qs === "" ? "/products" : `/products?${qs}`;
 }

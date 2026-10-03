@@ -11,6 +11,7 @@
 | `0005_messaging.sql` | `whatsapp_leads`, `whatsapp_messages` (outbound-only log; no secrets in tables). |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
+| `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
 
 `is_admin()` lives in `0006` deliberately: SQL-language function bodies
 are validated at `CREATE` time, so it must be defined after `profiles`

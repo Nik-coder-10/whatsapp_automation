@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_PRODUCTS,
   FEATURED_PRODUCTS,
+  buildCatalogueHref,
   formatSpecEntries,
   groupByCategory,
   parseCatalogueParams,
@@ -66,15 +67,21 @@ describe("static fallback catalogue (mirrors seed.sql)", () => {
 
 describe("parseCatalogueParams", () => {
   it("defaults page 1 and standard page size", () => {
-    expect(parseCatalogueParams({})).toEqual({ page: 1, pageSize: 12 });
+    expect(parseCatalogueParams({})).toEqual({
+      sort: "featured",
+      page: 1,
+      pageSize: 12,
+    });
   });
 
   it("clamps page and page size", () => {
     expect(parseCatalogueParams({ page: "0", pageSize: "999" })).toEqual({
+      sort: "featured",
       page: 1,
       pageSize: 48,
     });
     expect(parseCatalogueParams({ page: "abc", pageSize: "-3" })).toEqual({
+      sort: "featured",
       page: 1,
       pageSize: 1,
     });
@@ -83,11 +90,75 @@ describe("parseCatalogueParams", () => {
   it("trims category and takes the first of repeated params", () => {
     expect(
       parseCatalogueParams({ category: " trolleys ", page: ["2", "3"] }),
-    ).toEqual({ categorySlug: "trolleys", page: 2, pageSize: 12 });
+    ).toEqual({
+      categorySlug: "trolleys",
+      sort: "featured",
+      page: 2,
+      pageSize: 12,
+    });
   });
 
   it("drops blank category", () => {
     expect(parseCatalogueParams({ category: "  " }).categorySlug).toBeUndefined();
+  });
+});
+
+describe("parseCatalogueParams: search, sort, price", () => {
+  it("parses q and defaults sort to relevance", () => {
+    expect(parseCatalogueParams({ q: "  trolley " })).toEqual({
+      q: "trolley",
+      sort: "relevance",
+      page: 1,
+      pageSize: 12,
+    });
+  });
+
+  it("defaults sort to featured without q", () => {
+    expect(parseCatalogueParams({}).sort).toBe("featured");
+  });
+
+  it("accepts valid sorts, falls back otherwise", () => {
+    expect(parseCatalogueParams({ sort: "price_asc" }).sort).toBe("price_asc");
+    expect(parseCatalogueParams({ sort: "bogus", q: "x" }).sort).toBe("relevance");
+    expect(parseCatalogueParams({ sort: "bogus" }).sort).toBe("featured");
+  });
+
+  it("parses price bounds and flags inverted ranges", () => {
+    expect(parseCatalogueParams({ min: "5000", max: "100000" })).toMatchObject({
+      minPrice: 5000,
+      maxPrice: 100000,
+    });
+    const bad = parseCatalogueParams({ min: "999", max: "10" });
+    expect(bad.priceError).toContain("Minimum price");
+    expect(bad.minPrice).toBeUndefined();
+    expect(bad.maxPrice).toBeUndefined();
+    expect(parseCatalogueParams({ min: "-5" }).minPrice).toBeUndefined();
+  });
+
+  it("caps q length", () => {
+    expect(parseCatalogueParams({ q: "x".repeat(200) }).q).toHaveLength(100);
+  });
+});
+
+describe("buildCatalogueHref", () => {
+  it("omits defaults for clean shareable URLs", () => {
+    expect(buildCatalogueHref({})).toBe("/products");
+    expect(buildCatalogueHref({ page: 1, sort: "featured" })).toBe("/products");
+  });
+
+  it("keeps every active filter", () => {
+    expect(
+      buildCatalogueHref({
+        q: "trolley",
+        categorySlug: "trolleys",
+        sort: "price_asc",
+        minPrice: 1000,
+        maxPrice: 50000,
+        page: 2,
+      }),
+    ).toBe(
+      "/products?q=trolley&category=trolleys&sort=price_asc&min=1000&max=50000&page=2",
+    );
   });
 });
 
@@ -135,6 +206,60 @@ describe("getCataloguePage without Supabase (offline fallback)", () => {
     expect(r.products).toHaveLength(0);
     expect(r.total).toBe(8);
     expect(r.totalPages).toBe(1);
+  });
+
+  it("searches names, categories and descriptions", async () => {
+    const r = await getCataloguePage({
+      q: "trolley",
+      sort: "relevance",
+      page: 1,
+      pageSize: 12,
+    });
+    expect(r.total).toBeGreaterThan(0);
+    expect(
+      r.products.every((p) =>
+        `${p.name} ${p.category} ${p.description}`.toLowerCase().includes("trolley"),
+      ),
+    ).toBe(true);
+  });
+
+  it("applies price windows", async () => {
+    const r = await getCataloguePage({
+      minPrice: 5000,
+      maxPrice: 10000,
+      page: 1,
+      pageSize: 12,
+    });
+    expect(r.total).toBeGreaterThan(0);
+    expect(
+      r.products.every((p) => Number(p.price) >= 5000 && Number(p.price) <= 10000),
+    ).toBe(true);
+  });
+
+  it("sorts by price ascending", async () => {
+    const r = await getCataloguePage({
+      sort: "price_asc",
+      page: 1,
+      pageSize: 12,
+    });
+    const prices = r.products.map((p) => Number(p.price));
+    expect([...prices].sort((a, b) => a - b)).toEqual(prices);
+  });
+
+  it("combines query, category and price", async () => {
+    const r = await getCataloguePage({
+      q: "lift",
+      categorySlug: "lifting-and-stacking",
+      minPrice: 1000,
+      page: 1,
+      pageSize: 12,
+    });
+    expect(r.unknownCategory).toBe(false);
+    expect(
+      r.products.every(
+        (p) => p.category === "Lifting & Stacking" && Number(p.price) >= 1000,
+      ),
+    ).toBe(true);
   });
 });
 

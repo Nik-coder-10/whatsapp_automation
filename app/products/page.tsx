@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Alert } from "@/components/ui/Alert";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { EmptyState } from "@/components/ui/States";
 import { CategoryFilter } from "@/components/products/CategoryFilter";
+import { FilterBar } from "@/components/products/FilterBar";
 import { Pagination } from "@/components/products/Pagination";
 import { ProductGrid } from "@/components/products/ProductGrid";
-import { getCataloguePage } from "@/lib/catalog/queries";
+import { getCataloguePage, getCategories } from "@/lib/catalog/queries";
 import { parseCatalogueParams } from "@/lib/catalog/products";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -16,20 +18,28 @@ export async function generateMetadata({
   searchParams: Promise<SearchParams>;
 }): Promise<Metadata> {
   const params = parseCatalogueParams(await searchParams);
-  const result = await getCataloguePage({ ...params, pageSize: 1, page: 1 });
-  const suffix = result.activeCategory ? ` — ${result.activeCategory.name}` : "";
+  // Category name only (cached, shared with the page — no product query).
+  const categories = await getCategories();
+  const active = params.categorySlug
+    ? (categories.find((c) => c.slug === params.categorySlug)?.name ?? null)
+    : null;
+  const bits = [
+    active ? ` — ${active}` : "",
+    params.q ? ` — “${params.q}”` : "",
+  ].join("");
   return {
-    title: `Products${suffix}`,
+    title: `Products${bits}`,
     description:
-      `Browse Trolift industrial equipment${suffix} with transparent ex-GST ` +
+      `Browse Trolift industrial equipment${active ? ` — ${active}` : ""}` +
+      `${params.q ? ` matching “${params.q}”` : ""} with transparent ex-GST ` +
       `pricing, stock availability and GST invoicing.`,
   };
 }
 
 /**
- * Public catalogue: server-rendered grid with DB-driven category pills
- * and page navigation. Active products only; loading/empty/error states
- * via loading.tsx / EmptyState / error.tsx.
+ * Public catalogue: search + category + price + sort, all in the URL.
+ * Server-rendered grid; the FilterBar is the only client island.
+ * Loading/empty/error states via loading.tsx / EmptyState / error.tsx.
  */
 export default async function ProductsPage({
   searchParams,
@@ -40,7 +50,16 @@ export default async function ProductsPage({
   const result = await getCataloguePage(params);
   const heading = result.activeCategory
     ? result.activeCategory.name
-    : "All products";
+    : params.q
+      ? `Results for “${params.q}”`
+      : "All products";
+
+  const query = {
+    ...(params.q ? { q: params.q } : {}),
+    sort: params.sort,
+    ...(params.minPrice !== undefined ? { minPrice: params.minPrice } : {}),
+    ...(params.maxPrice !== undefined ? { maxPrice: params.maxPrice } : {}),
+  };
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
@@ -67,17 +86,51 @@ export default async function ProductsPage({
             {result.unknownCategory
               ? "Unknown category."
               : result.total === 0
-                ? "No products available right now."
+                ? "No products match these filters."
                 : `${result.total} ${result.total === 1 ? "product" : "products"} · prices excl. GST`}
           </p>
         </div>
       </div>
 
       <div className="mt-5">
+        <FilterBar
+          key={JSON.stringify({
+            q: params.q ?? null,
+            sort: params.sort ?? "featured",
+            min: params.minPrice ?? null,
+            max: params.maxPrice ?? null,
+            category: params.categorySlug ?? null,
+          })}
+          initial={{
+            ...(params.q ? { q: params.q } : {}),
+            sort: params.sort ?? "featured",
+            ...(params.minPrice !== undefined
+              ? { minPrice: params.minPrice }
+              : {}),
+            ...(params.maxPrice !== undefined
+              ? { maxPrice: params.maxPrice }
+              : {}),
+            ...(params.categorySlug
+              ? { categorySlug: params.categorySlug }
+              : {}),
+          }}
+        />
+      </div>
+
+      {params.priceError ? (
+        <div className="mt-4">
+          <Alert tone="warning" title="Price filter ignored">
+            {params.priceError}
+          </Alert>
+        </div>
+      ) : null}
+
+      <div className="mt-5">
         <CategoryFilter
           categories={result.categories}
           activeSlug={result.activeCategory?.slug}
           total={result.categories.reduce((n, c) => n + c.productCount, 0)}
+          query={query}
         />
       </div>
 
@@ -92,12 +145,16 @@ export default async function ProductsPage({
             title={
               result.page > 1
                 ? "No products on this page"
-                : "No products available"
+                : params.q || params.categorySlug || params.minPrice !== undefined || params.maxPrice !== undefined
+                  ? "No products match"
+                  : "No products available"
             }
             message={
               result.page > 1
                 ? "Try an earlier page, or contact sales for availability."
-                : "Our catalogue is being stocked. Contact sales for current availability and quotes."
+                : params.q || params.categorySlug || params.minPrice !== undefined || params.maxPrice !== undefined
+                  ? "Try different keywords, a wider price range, or clear the filters."
+                  : "Our catalogue is being stocked. Contact sales for current availability and quotes."
             }
           />
         ) : (
@@ -105,12 +162,28 @@ export default async function ProductsPage({
         )}
       </div>
 
+      {(result.unknownCategory || result.products.length === 0) &&
+      (params.q ||
+        params.categorySlug ||
+        params.minPrice !== undefined ||
+        params.maxPrice !== undefined) ? (
+        <div className="mt-4 flex justify-center">
+          <Link
+            href="/products"
+            className="inline-flex h-11 items-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+          >
+            Clear all filters
+          </Link>
+        </div>
+      ) : null}
+
       {result.products.length > 0 && (
         <div className="mt-8">
           <Pagination
             page={result.page}
             totalPages={result.totalPages}
             categorySlug={result.activeCategory?.slug}
+            query={query}
           />
         </div>
       )}

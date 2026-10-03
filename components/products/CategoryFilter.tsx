@@ -1,8 +1,15 @@
 import Link from "next/link";
-import type { ProductCategory } from "@/lib/catalog/products";
+import {
+  buildCatalogueHref,
+  type CatalogueSort,
+  type ProductCategory,
+} from "@/lib/catalog/products";
 
-function hrefFor(categorySlug?: string): string {
-  return categorySlug ? `/products?category=${categorySlug}` : "/products";
+export interface FilterQuery {
+  q?: string;
+  sort?: CatalogueSort;
+  minPrice?: number;
+  maxPrice?: number;
 }
 
 /**
@@ -14,11 +21,16 @@ export function CategoryFilter({
   categories,
   activeSlug,
   total,
+  query,
 }: {
   categories: ProductCategory[];
   activeSlug?: string;
   total: number;
+  /** Preserved across category switches (search, sort, price). */
+  query: FilterQuery;
 }) {
+  const hrefFor = (categorySlug?: string) =>
+    buildCatalogueHref({ ...query, categorySlug });
   return (
     <nav aria-label="Filter by category">
       <ul className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
