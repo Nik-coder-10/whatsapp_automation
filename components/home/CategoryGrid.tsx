@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EmptyState } from "@/components/ui/States";
 import { getCategories } from "@/lib/catalog/queries";
 
@@ -31,9 +32,12 @@ export async function CategoryGrid() {
                 </span>
               </div>
               <p className="mt-1.5 text-sm leading-6 text-zinc-600">{c.blurb}</p>
-              <p className="mt-3 text-sm font-semibold text-brand-700">
-                Full range coming with the catalogue →
-              </p>
+              <Link
+                href={`/products?category=${c.slug}`}
+                className="mt-3 inline-block text-sm font-semibold text-brand-700 hover:underline"
+              >
+                Browse {c.name} →
+              </Link>
             </li>
           ))}
         </ul>

@@ -3,9 +3,11 @@ import {
   ALL_PRODUCTS,
   FEATURED_PRODUCTS,
   groupByCategory,
+  parseCatalogueParams,
   slugifyCategory,
 } from "@/lib/catalog/products";
 import {
+  getCataloguePage,
   getCategories,
   getFeaturedProducts,
   getProductBySlug,
@@ -57,6 +59,80 @@ describe("static fallback catalogue (mirrors seed.sql)", () => {
   it("featured is a subset of all", () => {
     const ids = new Set(ALL_PRODUCTS.map((p) => p.id));
     for (const p of FEATURED_PRODUCTS) expect(ids.has(p.id)).toBe(true);
+  });
+});
+
+describe("parseCatalogueParams", () => {
+  it("defaults page 1 and standard page size", () => {
+    expect(parseCatalogueParams({})).toEqual({ page: 1, pageSize: 12 });
+  });
+
+  it("clamps page and page size", () => {
+    expect(parseCatalogueParams({ page: "0", pageSize: "999" })).toEqual({
+      page: 1,
+      pageSize: 48,
+    });
+    expect(parseCatalogueParams({ page: "abc", pageSize: "-3" })).toEqual({
+      page: 1,
+      pageSize: 1,
+    });
+  });
+
+  it("trims category and takes the first of repeated params", () => {
+    expect(
+      parseCatalogueParams({ category: " trolleys ", page: ["2", "3"] }),
+    ).toEqual({ categorySlug: "trolleys", page: 2, pageSize: 12 });
+  });
+
+  it("drops blank category", () => {
+    expect(parseCatalogueParams({ category: "  " }).categorySlug).toBeUndefined();
+  });
+});
+
+describe("getCataloguePage without Supabase (offline fallback)", () => {
+  it("pages all products", async () => {
+    const r = await getCataloguePage({ page: 1, pageSize: 12 });
+    expect(r.total).toBe(8);
+    expect(r.totalPages).toBe(1);
+    expect(r.products).toHaveLength(8);
+    expect(r.unknownCategory).toBe(false);
+    expect(r.live).toBe(false);
+  });
+
+  it("slices pages", async () => {
+    const r = await getCataloguePage({ page: 3, pageSize: 3 });
+    expect(r.total).toBe(8);
+    expect(r.totalPages).toBe(3);
+    expect(r.products).toHaveLength(2);
+  });
+
+  it("filters by category slug", async () => {
+    const r = await getCataloguePage({
+      categorySlug: "trolleys",
+      page: 1,
+      pageSize: 12,
+    });
+    expect(r.total).toBe(1);
+    expect(r.activeCategory?.name).toBe("Trolleys");
+    expect(r.unknownCategory).toBe(false);
+  });
+
+  it("reports unknown categories as empty, not errors", async () => {
+    const r = await getCataloguePage({
+      categorySlug: "nope",
+      page: 1,
+      pageSize: 12,
+    });
+    expect(r.unknownCategory).toBe(true);
+    expect(r.products).toHaveLength(0);
+    expect(r.total).toBe(0);
+  });
+
+  it("returns an empty page past the end", async () => {
+    const r = await getCataloguePage({ page: 99, pageSize: 12 });
+    expect(r.products).toHaveLength(0);
+    expect(r.total).toBe(8);
+    expect(r.totalPages).toBe(1);
   });
 });
 

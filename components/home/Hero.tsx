@@ -22,7 +22,7 @@ export function Hero() {
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="#featured"
+              href="/products"
               className="inline-flex h-12 items-center justify-center rounded-md bg-amber-400 px-6 text-base font-bold text-brand-950 hover:bg-amber-300"
             >
               Browse products

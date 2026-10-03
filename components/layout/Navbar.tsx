@@ -7,7 +7,7 @@ import { getWhatsAppLink } from "@/lib/contact";
 
 const LINKS = [
   { label: "Home", href: "/" },
-  { label: "Products", href: "/#featured" },
+  { label: "Products", href: "/products" },
   { label: "Categories", href: "/#categories" },
   { label: "Why Trolift", href: "/#trust" },
   { label: "Contact", href: "/#contact" },

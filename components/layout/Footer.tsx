@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
+import { slugifyCategory } from "@/lib/catalog/products";
 
 /**
  * Public footer: brand + catalogue + company + buying-info columns,
@@ -24,20 +25,26 @@ export function Footer() {
         <nav aria-label="Products">
           <p className="text-sm font-bold tracking-wide text-white uppercase">Equipment</p>
           <ul className="mt-3 flex flex-col gap-2 text-sm">
-            {(
-              [
-                ["Pallet Handling", "/#categories"],
-                ["Lifting & Stacking", "/#categories"],
-                ["Platform Trolleys", "/#categories"],
-                ["Dock Equipment", "/#categories"],
-              ] as [string, string][]
-            ).map(([label, href]) => (
+            {[
+              "Pallet Handling",
+              "Lifting & Stacking",
+              "Trolleys",
+              "Dock Equipment",
+            ].map((label) => (
               <li key={label}>
-                <Link href={href} className="text-brand-200 hover:text-white hover:underline">
+                <Link
+                  href={`/products?category=${slugifyCategory(label)}`}
+                  className="text-brand-200 hover:text-white hover:underline"
+                >
                   {label}
                 </Link>
               </li>
             ))}
+            <li>
+              <Link href="/products" className="text-brand-200 hover:text-white hover:underline">
+                All products
+              </Link>
+            </li>
           </ul>
         </nav>
         <nav aria-label="Company">

@@ -11,12 +11,14 @@
  * configuration degrades to the fallback instead of crashing the page.
  * Never import this module from Client Components.
  */
+import { cache } from "react";
 import {
   ALL_PRODUCTS,
   FEATURED_PRODUCTS,
   PRODUCT_CATEGORIES,
   groupByCategory,
   type CatalogProduct,
+  type CatalogueParams,
   type ProductCategory,
 } from "@/lib/catalog/products";
 
@@ -100,19 +102,193 @@ export async function getProductSlugs(): Promise<string[]> {
   return rows.map((r) => r.slug);
 }
 
-/** Live category cards with counts; [] when the live catalogue is empty. */
-export async function getCategories(): Promise<ProductCategory[]> {
+export interface CatalogueResult {
+  products: CatalogProduct[];
+  categories: ProductCategory[];
+  /** Resolved category, or null for "All". */
+  activeCategory: ProductCategory | null;
+  /** True when ?category= matches nothing (renders empty state). */
+  unknownCategory: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  /** False when served from the static dev-data fallback. */
+  live: boolean;
+}
+
+function paginate(
+  all: CatalogProduct[],
+  page: number,
+  pageSize: number,
+): { products: CatalogProduct[]; total: number; totalPages: number } {
+  const total = all.length;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+  const start = (page - 1) * pageSize;
+  return {
+    products: all.slice(start, start + pageSize),
+    total,
+    totalPages,
+  };
+}
+
+/**
+ * Live category cards with counts; [] when the live catalogue is empty.
+ *
+ * Cached per request: the listing page's generateMetadata and component
+ * share a single categories query instead of firing it twice. Defined
+ * above its callers (const arrow functions are not hoisted).
+ */
+export const getCategories = cache(
+  async (): Promise<ProductCategory[]> => {
+    const supabase = await getServerClient();
+    if (!supabase) return PRODUCT_CATEGORIES;
+    const { data, error } = await supabase
+      .from("products")
+      .select("category")
+      .eq("is_active", true);
+    if (error) {
+      console.error("[catalog] categories query failed:", error.message);
+      return PRODUCT_CATEGORIES;
+    }
+    const rows = (data ?? []) as unknown as Array<{ category: string }>;
+    if (rows.length === 0) return [];
+    return groupByCategory(rows);
+  },
+);
+
+/**
+ * Paginated, category-filtered catalogue. Two narrow queries (categories
+ * for slug→name resolution, then a counted + ranged product query) —
+ * never a full-table pull. Static fallback mirrors the same semantics
+ * offline; unknown slugs yield an empty page, not an error.
+ */
+export async function getCataloguePage(
+  filters: CatalogueParams,
+): Promise<CatalogueResult> {
+  const { categorySlug, page, pageSize } = filters;
   const supabase = await getServerClient();
-  if (!supabase) return PRODUCT_CATEGORIES;
-  const { data, error } = await supabase
-    .from("products")
-    .select("category")
-    .eq("is_active", true);
-  if (error) {
-    console.error("[catalog] categories query failed:", error.message);
-    return PRODUCT_CATEGORIES;
+  const staticActive = ALL_PRODUCTS.filter((p) => p.is_active);
+
+  const empty = (
+    categories: ProductCategory[],
+    unknownCategory: boolean,
+    live: boolean,
+  ): CatalogueResult => ({
+    products: [],
+    categories,
+    activeCategory: null,
+    unknownCategory,
+    total: 0,
+    page,
+    pageSize,
+    totalPages: 0,
+    live,
+  });
+
+  // 1. Categories (slug→name resolution). Shared with generateMetadata
+  // through the cached getCategories(): one query per request.
+  // Offline → static dev data; live error → static nav (logged);
+  // live empty → [] (empty states).
+  let categories: ProductCategory[];
+  if (!supabase) {
+    const grouped = groupByCategory(
+      staticActive.map((p) => ({ category: p.category })),
+    );
+    categories = grouped.length > 0 ? grouped : PRODUCT_CATEGORIES;
+  } else {
+    categories = await getCategories();
   }
-  const rows = (data ?? []) as unknown as Array<{ category: string }>;
-  if (rows.length === 0) return [];
-  return groupByCategory(rows);
+
+  // 2. Resolve ?category=. Unknown slugs yield an empty page, not an error.
+  const activeCategory = categorySlug
+    ? (categories.find((c) => c.slug === categorySlug) ?? null)
+    : null;
+  if (categorySlug && !activeCategory) {
+    return empty(categories, true, supabase !== null);
+  }
+
+  // 3. Products: static slice offline, counted+ranged query live.
+  if (!supabase) {
+    return pageOf(
+      categories,
+      activeCategory,
+      staticActive.filter(
+        (p) => !activeCategory || p.category === activeCategory.name,
+      ),
+      false,
+    );
+  }
+  const ranged = await queryLiveRange(
+    supabase,
+    activeCategory?.name ?? null,
+    page,
+    pageSize,
+  );
+  if (!ranged) {
+    return pageOf(
+      categories,
+      activeCategory,
+      staticActive.filter(
+        (p) => !activeCategory || p.category === activeCategory.name,
+      ),
+      false,
+    );
+  }
+  return {
+    products: ranged.products,
+    categories,
+    activeCategory,
+    unknownCategory: false,
+    total: ranged.total,
+    page,
+    pageSize,
+    totalPages: ranged.total === 0 ? 0 : Math.ceil(ranged.total / pageSize),
+    live: true,
+  };
+
+  function pageOf(
+    cats: ProductCategory[],
+    active: ProductCategory | null,
+    matching: CatalogProduct[],
+    isLive: boolean,
+  ): CatalogueResult {
+    const { products, total, totalPages } = paginate(matching, page, pageSize);
+    return {
+      products,
+      categories: cats,
+      activeCategory: active,
+      unknownCategory: false,
+      total,
+      page,
+      pageSize,
+      totalPages,
+      live: isLive,
+    };
+  }
+}
+
+/**
+ * One counted + ranged product query. Null on error (caller falls back
+ * to static data); never pulls more than one page of rows.
+ */
+async function queryLiveRange(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  categoryName: string | null,
+  page: number,
+  pageSize: number,
+): Promise<{ products: CatalogProduct[]; total: number } | null> {
+  let query = supabase
+    .from("products")
+    .select(PRODUCT_COLUMNS, { count: "exact" })
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+  if (categoryName) query = query.eq("category", categoryName);
+  const from = (page - 1) * pageSize;
+  const { data, error, count } = await query.range(from, from + pageSize - 1);
+  if (error) {
+    console.error("[catalog] catalogue page failed:", error.message);
+    return null;
+  }
+  return { products: toCatalog(data), total: count ?? 0 };
 }

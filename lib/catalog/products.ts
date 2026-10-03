@@ -204,3 +204,44 @@ export function groupByCategory(
 export function priceToPaise(price: string): number {
   return Math.round(Number(price) * 100);
 }
+
+export const CATALOGUE_DEFAULT_PAGE_SIZE = 12;
+export const CATALOGUE_MAX_PAGE_SIZE = 48;
+
+export interface CatalogueParams {
+  /** Category slug from the URL (validated against live categories). */
+  categorySlug?: string;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * Parses listing URL params defensively. Pure — unit-tested.
+ * Unknown/blank category passes through; the query layer resolves it
+ * against live categories (unknown → empty result, not an error).
+ * Search (`q`) slots in here in the next phase without touching callers.
+ */
+export function parseCatalogueParams(
+  searchParams: Record<string, string | string[] | undefined>,
+): CatalogueParams {
+  const first = (v: string | string[] | undefined): string | undefined =>
+    Array.isArray(v) ? v[0] : v;
+
+  const rawCategory = (first(searchParams["category"]) ?? "").trim();
+  const rawPage = Number(first(searchParams["page"]));
+  const rawSize = Number(first(searchParams["pageSize"]));
+
+  const page =
+    Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const size = Number.isInteger(rawSize) ? rawSize : CATALOGUE_DEFAULT_PAGE_SIZE;
+  const pageSize = Math.min(
+    CATALOGUE_MAX_PAGE_SIZE,
+    Math.max(1, size),
+  );
+
+  return {
+    ...(rawCategory === "" ? {} : { categorySlug: rawCategory }),
+    page,
+    pageSize,
+  };
+}

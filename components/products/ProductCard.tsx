@@ -1,15 +1,24 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { StockBadge } from "@/components/ui/StatusBadge";
 import { priceToPaise, type CatalogProduct } from "@/lib/catalog/products";
 
 /**
- * Catalogue product card (homepage + future /products grid).
- * Links to the product detail route (built in the catalogue phase);
- * the CTA is intentionally a link — no cart is wired yet.
+ * Catalogue product card (homepage + /products grid).
+ *
+ * No cart exists yet, so the default action is a View Details link.
+ * The cart phase injects its own UI via the `actions` slot without
+ * touching this component (e.g. <AddToCartButton …/> next to View).
  */
-export function ProductCard({ product }: { product: CatalogProduct }) {
+export function ProductCard({
+  product,
+  actions,
+}: {
+  product: CatalogProduct;
+  actions?: ReactNode;
+}) {
   const image = product.images[0] ?? "/images/products/placeholder.svg";
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
@@ -42,12 +51,14 @@ export function ProductCard({ product }: { product: CatalogProduct }) {
         <p className="line-clamp-2 text-sm text-zinc-600">{product.description}</p>
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <PriceDisplay amountPaise={priceToPaise(product.price)} unitNote="excl. GST" />
-          <Link
-            href={`/products/${product.slug}`}
-            className="inline-flex h-9 shrink-0 items-center rounded-md bg-brand-800 px-3 text-sm font-semibold text-white hover:bg-brand-700"
-          >
-            View
-          </Link>
+          {actions ?? (
+            <Link
+              href={`/products/${product.slug}`}
+              className="inline-flex h-11 shrink-0 items-center rounded-md bg-brand-800 px-4 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              View Details
+            </Link>
+          )}
         </div>
       </div>
     </article>

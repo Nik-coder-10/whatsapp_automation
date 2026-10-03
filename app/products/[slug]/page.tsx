@@ -73,7 +73,11 @@ export default async function ProductPage({
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
       <Breadcrumbs
-        items={[{ label: "Home", href: "/" }, { label: product.name }]}
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Products", href: "/products" },
+          { label: product.name },
+        ]}
       />
       <div className="mt-4 grid gap-8 lg:grid-cols-2">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-brand-50">
