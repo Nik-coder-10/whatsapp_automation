@@ -133,6 +133,34 @@ function paginate(
 }
 
 /**
+ * Related products: same category, active only, excluding the current
+ * product (limit 4). Static fallback offline; [] when nothing qualifies.
+ */
+export async function getRelatedProducts(
+  category: string,
+  excludeId: string,
+  limit = 4,
+): Promise<CatalogProduct[]> {
+  const pick = (pool: CatalogProduct[]) =>
+    pool.filter((p) => p.category === category && p.id !== excludeId).slice(0, limit);
+  const supabase = await getServerClient();
+  if (!supabase) return pick(ALL_PRODUCTS.filter((p) => p.is_active));
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_COLUMNS)
+    .eq("is_active", true)
+    .eq("category", category)
+    .neq("id", excludeId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("[catalog] related query failed:", error.message);
+    return pick(ALL_PRODUCTS.filter((p) => p.is_active));
+  }
+  return toCatalog(data);
+}
+
+/**
  * Live category cards with counts; [] when the live catalogue is empty.
  *
  * Cached per request: the listing page's generateMetadata and component

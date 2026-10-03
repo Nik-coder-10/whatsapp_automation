@@ -7,7 +7,7 @@
  * lib/catalog/queries.ts always wins when available — components consume
  * the same CatalogProduct type either way.
  */
-import type { ProductRow } from "@/types/database";
+import type { Json, ProductRow } from "@/types/database";
 
 export type CatalogProduct = Pick<
   ProductRow,
@@ -203,6 +203,29 @@ export function groupByCategory(
 /** NUMERIC decimal string → integer paise (≤2dp, so exact). */
 export function priceToPaise(price: string): number {
   return Math.round(Number(price) * 100);
+}
+
+export interface SpecEntry {
+  label: string;
+  value: string;
+}
+
+/**
+ * Structured specifications → display rows. Top-level entries only;
+ * nested objects render as compact JSON (never raw dumps in the UI).
+ * Pure — unit-tested.
+ */
+export function formatSpecEntries(specs: Json): SpecEntry[] {
+  if (specs === null || typeof specs !== "object" || Array.isArray(specs)) {
+    return [];
+  }
+  return Object.entries(specs).map(([key, value]) => ({
+    label: key.replace(/_/g, " "),
+    value:
+      typeof value === "object" && value !== null
+        ? JSON.stringify(value)
+        : String(value),
+  }));
 }
 
 export const CATALOGUE_DEFAULT_PAGE_SIZE = 12;

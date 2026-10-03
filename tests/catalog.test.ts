@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_PRODUCTS,
   FEATURED_PRODUCTS,
+  formatSpecEntries,
   groupByCategory,
   parseCatalogueParams,
   slugifyCategory,
@@ -12,6 +13,7 @@ import {
   getFeaturedProducts,
   getProductBySlug,
   getProductSlugs,
+  getRelatedProducts,
 } from "@/lib/catalog/queries";
 
 describe("groupByCategory", () => {
@@ -133,6 +135,45 @@ describe("getCataloguePage without Supabase (offline fallback)", () => {
     expect(r.products).toHaveLength(0);
     expect(r.total).toBe(8);
     expect(r.totalPages).toBe(1);
+  });
+});
+
+describe("formatSpecEntries", () => {
+  it("prettifies keys and stringifies values", () => {
+    expect(
+      formatSpecEntries({ capacity_kg: 2500, battery: "24V", test: true }),
+    ).toEqual([
+      { label: "capacity kg", value: "2500" },
+      { label: "battery", value: "24V" },
+      { label: "test", value: "true" },
+    ]);
+  });
+
+  it("returns [] for null, arrays and nested objects safely", () => {
+    expect(formatSpecEntries(null)).toEqual([]);
+    expect(formatSpecEntries(["a"])).toEqual([]);
+    expect(formatSpecEntries({ dims: { w: 1 } })).toEqual([
+      { label: "dims", value: '{"w":1}' },
+    ]);
+  });
+});
+
+describe("getRelatedProducts without Supabase (offline fallback)", () => {
+  it("returns same-category products excluding self", async () => {
+    const id = "b1c2d3e4-0006-4000-8000-000000000006";
+    const related = await getRelatedProducts("Lifting & Stacking", id);
+    expect(related.length).toBeGreaterThan(0);
+    expect(related.every((p) => p.category === "Lifting & Stacking")).toBe(true);
+    expect(related.some((p) => p.id === id)).toBe(false);
+    expect(related.every((p) => p.is_active)).toBe(true);
+  });
+
+  it("returns [] when nothing else qualifies", async () => {
+    const related = await getRelatedProducts(
+      "Trolleys",
+      "b1c2d3e4-0004-4000-8000-000000000004",
+    );
+    expect(related).toEqual([]);
   });
 });
 

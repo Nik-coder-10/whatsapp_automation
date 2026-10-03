@@ -1,29 +1,20 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { AddToCartControl } from "@/components/cart/AddToCartControl";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { StockBadge } from "@/components/ui/StatusBadge";
+import { ProductGallery } from "@/components/products/ProductGallery";
+import { RelatedProducts } from "@/components/products/RelatedProducts";
 import { getProductBySlug, getProductSlugs } from "@/lib/catalog/queries";
-import { priceToPaise } from "@/lib/catalog/products";
+import {
+  formatSpecEntries,
+  priceToPaise,
+  slugifyCategory,
+} from "@/lib/catalog/products";
 import { getWhatsAppLink } from "@/lib/contact";
-import type { Json } from "@/types/database";
-
-function prettifyKey(key: string): string {
-  return key.replace(/_/g, " ");
-}
-
-/** Top-level spec entries only (nested objects render as JSON). */
-function specEntries(specs: Json): Array<[string, string]> {
-  if (specs === null || typeof specs !== "object" || Array.isArray(specs)) {
-    return [];
-  }
-  return Object.entries(specs).map(([k, v]) => [
-    prettifyKey(k),
-    typeof v === "object" ? JSON.stringify(v) : String(v),
-  ]);
-}
+import { siteConfig } from "@/config/site";
 
 export async function generateMetadata({
   params,
@@ -36,6 +27,7 @@ export async function generateMetadata({
   return {
     title: `${product.name} — price & specs`,
     description: `${product.description} Category: ${product.category}. Ex-GST pricing with GST invoice.`,
+    alternates: { canonical: `/products/${product.slug}` },
   };
 }
 
@@ -52,8 +44,9 @@ export async function generateStaticParams() {
 }
 
 /**
- * Read-only product detail (no cart/checkout yet): photo, price, stock,
- * specifications and a WhatsApp enquiry CTA. Inactive/unknown slugs 404.
+ * Product detail: gallery, info, specs, quantity + cart interface,
+ * WhatsApp enquiry, related items. Read-only — no checkout, payment
+ * or delivery logic. Inactive/unknown slugs 404.
  */
 export default async function ProductPage({
   params,
@@ -64,33 +57,63 @@ export default async function ProductPage({
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  const image = product.images[0] ?? "/images/products/placeholder.svg";
-  const specs = specEntries(product.specifications);
+  const images =
+    product.images.length > 0
+      ? product.images.map((src, i) => ({
+          src,
+          alt: `${product.name} — photo ${i + 1}`,
+        }))
+      : [
+          {
+            src: "/images/products/placeholder.svg",
+            alt: `${product.name} — product photo coming soon`,
+          },
+        ];
+  const specs = formatSpecEntries(product.specifications);
   const enquiry = getWhatsAppLink(
     `Hello Trolift Solutions, I want a quote for "${product.name}".`,
   );
 
+  // Structured data from DB fields only: no ratings, reviews, brand or
+  // shipping claims. Availability mirrors live stock_quantity.
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description,
+    category: product.category,
+    image: images.map((img) => `${siteConfig.url}${img.src}`),
+    offers: {
+      "@type": "Offer",
+      price: product.price,
+      priceCurrency: "INR",
+      availability:
+        product.stock_quantity > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
+      url: `${siteConfig.url}/products/${product.slug}`,
+    },
+  };
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <Breadcrumbs
         items={[
           { label: "Home", href: "/" },
           { label: "Products", href: "/products" },
+          {
+            label: product.category,
+            href: `/products?category=${slugifyCategory(product.category)}`,
+          },
           { label: product.name },
         ]}
       />
       <div className="mt-4 grid gap-8 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-brand-50">
-          <Image
-            src={image}
-            alt={`${product.name} — product photo coming soon`}
-            width={800}
-            height={600}
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            priority
-            className="aspect-[4/3] w-full object-cover"
-          />
-        </div>
+        <ProductGallery images={images} productName={product.name} />
         <div>
           <p className="text-xs font-bold tracking-[0.14em] text-brand-700 uppercase">
             {product.category}
@@ -112,32 +135,32 @@ export default async function ProductPage({
               Final freight is confirmed against your delivery pincode before payment.
             </p>
           </div>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-4">
+            <AddToCartControl
+              productId={product.id}
+              maxQuantity={
+                product.stock_quantity > 0 ? product.stock_quantity : undefined
+              }
+            />
+          </div>
+          <div className="mt-3">
             {enquiry ? (
               <a
                 href={enquiry}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-12 flex-1 items-center justify-center rounded-md bg-green-600 px-6 text-base font-bold text-white hover:bg-green-500"
+                className="inline-flex h-12 w-full items-center justify-center rounded-md bg-green-600 px-6 text-base font-bold text-white hover:bg-green-500"
               >
                 Enquire on WhatsApp
               </a>
             ) : (
               <Link
                 href="/#contact"
-                className="inline-flex h-12 flex-1 items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
+                className="inline-flex h-12 w-full items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
               >
                 Contact sales
               </Link>
             )}
-            <button
-              type="button"
-              disabled
-              title="Add to cart — coming with the cart phase"
-              className="inline-flex h-12 flex-1 cursor-not-allowed items-center justify-center rounded-md border border-zinc-300 bg-zinc-100 px-6 text-base font-bold text-zinc-400"
-            >
-              Add to Cart — soon
-            </button>
           </div>
         </div>
       </div>
@@ -147,18 +170,19 @@ export default async function ProductPage({
             Specifications
           </h2>
           <dl className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white">
-            {specs.map(([k, v]) => (
+            {specs.map((s) => (
               <div
-                key={k}
+                key={s.label}
                 className="grid grid-cols-[140px_1fr] gap-3 border-b border-zinc-100 px-4 py-2.5 text-sm last:border-0 sm:grid-cols-[220px_1fr]"
               >
-                <dt className="font-semibold text-zinc-500 capitalize">{k}</dt>
-                <dd className="font-medium text-zinc-900">{v}</dd>
+                <dt className="font-semibold text-zinc-500 capitalize">{s.label}</dt>
+                <dd className="font-medium text-zinc-900">{s.value}</dd>
               </div>
             ))}
           </dl>
         </section>
       ) : null}
+      <RelatedProducts category={product.category} excludeId={product.id} />
     </div>
   );
 }
