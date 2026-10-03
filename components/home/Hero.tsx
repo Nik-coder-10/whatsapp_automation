@@ -34,7 +34,7 @@ export function Hero() {
               Talk to sales
             </Link>
           </div>
-          <dl className="mt-8 grid max-w-xl grid-cols-3 gap-4 border-t border-brand-800 pt-6">
+          <dl className="mt-8 grid max-w-xl grid-cols-1 gap-3 border-t border-brand-800 pt-6 sm:grid-cols-3 sm:gap-4">
             {(
               [
                 ["GST invoice", "on every order"],

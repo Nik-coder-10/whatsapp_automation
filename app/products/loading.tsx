@@ -5,6 +5,9 @@ import { ProductCardSkeleton } from "@/components/ui/Skeleton";
 export default function ProductsLoading() {
   return (
     <Container className="flex flex-col gap-6 py-6">
+      <span role="status" className="sr-only">
+        Loading products…
+      </span>
       <div className="flex flex-col gap-2" aria-hidden>
         <div className="h-3 w-24 rounded bg-zinc-200" />
         <div className="h-8 w-56 rounded bg-zinc-200" />

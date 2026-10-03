@@ -23,7 +23,7 @@ export function Pagination({
   const btn =
     "inline-flex h-11 items-center rounded-md border px-5 text-sm font-semibold";
   return (
-    <nav aria-label="Product pages" className="flex items-center justify-center gap-3">
+    <nav aria-label="Product pages" className="flex flex-wrap items-center justify-center gap-3">
       {prev ? (
         <Link
           href={hrefFor(page - 1)}

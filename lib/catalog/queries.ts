@@ -62,26 +62,29 @@ export async function getFeaturedProducts(): Promise<CatalogProduct[]> {
   return rows.length > 0 ? rows : [];
 }
 
-/** Single active product by slug (detail page). Null when missing/inactive. */
-export async function getProductBySlug(
-  slug: string,
-): Promise<CatalogProduct | null> {
-  const supabase = await getServerClient();
-  if (!supabase) {
-    return ALL_PRODUCTS.find((p) => p.slug === slug) ?? null;
-  }
-  const { data, error } = await supabase
-    .from("products")
-    .select(PRODUCT_COLUMNS)
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (error) {
-    console.error("[catalog] product query failed:", error.message);
-    return ALL_PRODUCTS.find((p) => p.slug === slug) ?? null;
-  }
-  return (data as unknown as CatalogProduct | null) ?? null;
-}
+/**
+ * Single active product by slug (detail page). Null when missing/inactive.
+ * Cached per request: generateMetadata and the page share one query.
+ */
+export const getProductBySlug = cache(
+  async (slug: string): Promise<CatalogProduct | null> => {
+    const supabase = await getServerClient();
+    if (!supabase) {
+      return ALL_PRODUCTS.find((p) => p.slug === slug) ?? null;
+    }
+    const { data, error } = await supabase
+      .from("products")
+      .select(PRODUCT_COLUMNS)
+      .eq("slug", slug)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (error) {
+      console.error("[catalog] product query failed:", error.message);
+      return ALL_PRODUCTS.find((p) => p.slug === slug) ?? null;
+    }
+    return (data as unknown as CatalogProduct | null) ?? null;
+  },
+);
 
 /**
  * Active product slugs (detail-page generateStaticParams).

@@ -8,7 +8,10 @@ import { FilterBar } from "@/components/products/FilterBar";
 import { Pagination } from "@/components/products/Pagination";
 import { ProductGrid } from "@/components/products/ProductGrid";
 import { getCataloguePage, getCategories } from "@/lib/catalog/queries";
-import { parseCatalogueParams } from "@/lib/catalog/products";
+import {
+  buildCatalogueHref,
+  parseCatalogueParams,
+} from "@/lib/catalog/products";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -33,6 +36,17 @@ export async function generateMetadata({
       `Browse Trolift industrial equipment${active ? ` — ${active}` : ""}` +
       `${params.q ? ` matching “${params.q}”` : ""} with transparent ex-GST ` +
       `pricing, stock availability and GST invoicing.`,
+    // Canonical drops the page cursor (page 1 is the canonical view);
+    // filter combinations keep their own canonical for shareability.
+    alternates: {
+      canonical: buildCatalogueHref({
+        ...(params.categorySlug ? { categorySlug: params.categorySlug } : {}),
+        ...(params.q ? { q: params.q } : {}),
+        ...(params.sort && params.sort !== "featured" ? { sort: params.sort } : {}),
+        ...(params.minPrice !== undefined ? { minPrice: params.minPrice } : {}),
+        ...(params.maxPrice !== undefined ? { maxPrice: params.maxPrice } : {}),
+      }),
+    },
   };
 }
 
@@ -95,7 +109,6 @@ export default async function ProductsPage({
       <div className="mt-5">
         <FilterBar
           key={JSON.stringify({
-            q: params.q ?? null,
             sort: params.sort ?? "featured",
             min: params.minPrice ?? null,
             max: params.maxPrice ?? null,

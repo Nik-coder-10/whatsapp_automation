@@ -43,7 +43,7 @@ export function ProductCard({
           </p>
           <StockBadge quantity={product.stock_quantity} />
         </div>
-        <h3 className="text-base font-bold text-zinc-900">
+        <h3 className="line-clamp-2 min-h-[3rem] text-base leading-6 font-bold text-zinc-900">
           <Link href={`/products/${product.slug}`} className="hover:text-brand-700 hover:underline">
             {product.name}
           </Link>

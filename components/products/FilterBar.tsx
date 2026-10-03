@@ -37,10 +37,19 @@ export function FilterBar({ initial }: { initial: FilterBarState }) {
     initial.maxPrice !== undefined ? String(initial.maxPrice) : "",
   );
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // NOTE: the page remounts this component (via `key`) whenever the URL
-  // filter state changes, so initial values are picked up per mount and
-  // no state-syncing effect is needed here.
+  // The page remounts this component (via `key`, excluding the live
+  // search text) whenever committed filter state changes. While typing,
+  // the input keeps local state so focus is never stolen; when the URL
+  // changes underneath us (back/forward, clear links) we resync — but
+  // never while the user is typing in the field.
+  useEffect(() => {
+    if (document.activeElement !== searchRef.current) {
+      setQ(initial.q ?? "");
+    }
+  }, [initial.q]);
+
   useEffect(
     () => () => {
       if (debounce.current) clearTimeout(debounce.current);
@@ -100,6 +109,7 @@ export function FilterBar({ initial }: { initial: FilterBarState }) {
           Search
         </label>
         <input
+          ref={searchRef}
           id="catalogue-search"
           type="search"
           autoComplete="off"
@@ -157,7 +167,7 @@ export function FilterBar({ initial }: { initial: FilterBarState }) {
             placeholder="Min"
             value={min}
             onChange={(e) => setMin(e.target.value)}
-            className="h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-brand-700"
+            className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-brand-700"
           />
           <span aria-hidden className="text-zinc-400">
             –
@@ -173,7 +183,7 @@ export function FilterBar({ initial }: { initial: FilterBarState }) {
             placeholder="Max"
             value={max}
             onChange={(e) => setMax(e.target.value)}
-            className="h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-brand-700"
+            className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-brand-700"
           />
           <button
             type="submit"
