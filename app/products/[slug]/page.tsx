@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { AddToCartControl } from "@/components/cart/AddToCartControl";
+import { BuyBox } from "@/components/cart/BuyBox";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { StockBadge } from "@/components/ui/StatusBadge";
@@ -132,11 +132,16 @@ export default async function ProductPage({
             </p>
           </div>
           <div className="mt-4">
-            <AddToCartControl
-              productId={product.id}
-              maxQuantity={
-                product.stock_quantity > 0 ? product.stock_quantity : undefined
-              }
+            <BuyBox
+              product={{
+                productId: product.id,
+                slug: product.slug,
+                name: product.name,
+                category: product.category,
+                pricePaise: priceToPaise(product.price),
+                image: images[0]?.src ?? "/images/products/placeholder.svg",
+                stockQuantity: product.stock_quantity,
+              }}
             />
           </div>
           <div className="mt-3">

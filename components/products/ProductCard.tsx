@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { StockBadge } from "@/components/ui/StatusBadge";
 import { priceToPaise, type CatalogProduct } from "@/lib/catalog/products";
@@ -52,12 +53,25 @@ export function ProductCard({
         <div className="mt-auto flex items-end justify-between gap-2 pt-2">
           <PriceDisplay amountPaise={priceToPaise(product.price)} unitNote="excl. GST" />
           {actions ?? (
-            <Link
-              href={`/products/${product.slug}`}
-              className="inline-flex h-11 shrink-0 items-center rounded-md bg-brand-800 px-4 text-sm font-semibold text-white hover:bg-brand-700"
-            >
-              View Details
-            </Link>
+            <span className="flex shrink-0 items-center gap-2">
+              <AddToCartButton
+                product={{
+                  productId: product.id,
+                  slug: product.slug,
+                  name: product.name,
+                  category: product.category,
+                  pricePaise: priceToPaise(product.price),
+                  image: image,
+                  stockQuantity: product.stock_quantity,
+                }}
+              />
+              <Link
+                href={`/products/${product.slug}`}
+                className="inline-flex h-11 items-center rounded-md bg-brand-800 px-4 text-sm font-semibold text-white hover:bg-brand-700"
+              >
+                View
+              </Link>
+            </span>
           )}
         </div>
       </div>
