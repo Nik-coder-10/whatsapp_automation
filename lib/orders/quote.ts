@@ -1,3 +1,4 @@
+import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { AppError } from "@/lib/api/errors";
 import { quoteDelivery } from "@/lib/delivery/engine";

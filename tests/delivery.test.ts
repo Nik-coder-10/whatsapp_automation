@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// server-only modules throw outside the Next server runtime by design.
+vi.mock("server-only", () => ({}));
 import {
   selectDeliveryOption,
   withinOrderWindow,

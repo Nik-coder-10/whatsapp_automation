@@ -6,6 +6,7 @@ import {
   isValidPaymentReference,
   normalizePaymentReference,
 } from "@/lib/payments/claims";
+import { normalizePhone } from "@/lib/validations/common";
 import { canTransition } from "@/lib/orders/transitions";
 import type { OrderStatus, PaymentStatus } from "@/types";
 
@@ -32,6 +33,8 @@ export interface ClaimResult {
 export async function submitPaymentClaim(input: {
   orderId: string;
   reference: string;
+  /** Customer's mobile — must match the order's customer (IDOR guard). */
+  phone: string;
 }): Promise<ClaimResult> {
   const reference = normalizePaymentReference(input.reference);
   if (!isValidPaymentReference(input.reference)) {
@@ -45,17 +48,36 @@ export async function submitPaymentClaim(input: {
 
   const { data: order, error: orderError } = await admin
     .from("orders")
-    .select("id,order_number,payment_status,order_status")
+    .select("id,order_number,customer_id,payment_status,order_status")
     .eq("id", input.orderId)
     .maybeSingle();
   const orderRow = order as unknown as {
     id: string;
     order_number: string;
+    customer_id: string;
     payment_status: PaymentStatus;
     order_status: OrderStatus;
   } | null;
   if (orderError || !orderRow) {
     throw new AppError("NOT_FOUND", "Order not found.", 404);
+  }
+  // IDOR guard: the claimant must know the order's customer mobile,
+  // which is never exposed publicly (listing shows a masked value).
+  const { data: customer } = await admin
+    .from("customers")
+    .select("phone")
+    .eq("id", orderRow.customer_id)
+    .maybeSingle();
+  const customerRow = customer as unknown as { phone: string } | null;
+  if (
+    !customerRow ||
+    normalizePhone(input.phone) !== normalizePhone(customerRow.phone)
+  ) {
+    throw new AppError(
+      "FORBIDDEN",
+      "The mobile number does not match this order.",
+      403,
+    );
   }
   assertClaimAllowed(orderRow.payment_status, orderRow.order_status);
 

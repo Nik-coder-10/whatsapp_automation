@@ -15,6 +15,7 @@ import type { ApiResponse } from "@/types/api";
  */
 export function ClaimForm({ orderId }: { orderId: string }) {
   const [reference, setReference] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -25,13 +26,21 @@ export function ClaimForm({ orderId }: { orderId: string }) {
       setError("Enter the 6–30 character reference from your UPI app (usually the 12-digit UTR).");
       return;
     }
+    if (phone.trim() === "") {
+      setError("Enter the mobile number used for this order.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const res = await fetch("/api/payments/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, reference: reference.trim() }),
+        body: JSON.stringify({
+          orderId,
+          reference: reference.trim(),
+          phone: phone.trim(),
+        }),
       });
       const json = (await res.json()) as ApiResponse<{ orderNumber: string }>;
       if (!json.ok) {
@@ -58,15 +67,26 @@ export function ClaimForm({ orderId }: { orderId: string }) {
   return (
     <form noValidate onSubmit={submit} aria-label="Submit payment reference">
       <Input
-        label="UPI transaction / UTR number"
-        name="payment-reference"
-        autoComplete="off"
-        placeholder="12-digit UTR from your UPI app"
-        value={reference}
-        onChange={(e) => setReference(e.target.value)}
-        error={error ?? undefined}
-        hint="Find it in your UPI app's payment history after paying."
+        label="Order mobile number"
+        name="claim-phone"
+        autoComplete="tel"
+        inputMode="tel"
+        placeholder="Mobile number from the order"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
       />
+      <div className="mt-3">
+        <Input
+          label="UPI transaction / UTR number"
+          name="payment-reference"
+          autoComplete="off"
+          placeholder="12-digit UTR from your UPI app"
+          value={reference}
+          onChange={(e) => setReference(e.target.value)}
+          error={error ?? undefined}
+          hint="Find it in your UPI app's payment history after paying."
+        />
+      </div>
       <div className="mt-3">
         <Button type="submit" loading={submitting} className="w-full sm:w-auto">
           I Have Paid — Submit Reference

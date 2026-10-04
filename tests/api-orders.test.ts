@@ -1,0 +1,270 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  createMockClient,
+  type MockResponder,
+} from "@/tests/helpers/supabase-mock";
+
+vi.mock("server-only", () => ({}));
+
+let serverHandler: MockResponder = () => {
+  throw new Error("unexpected server query");
+};
+let adminHandler: MockResponder = () => {
+  throw new Error("unexpected admin query");
+};
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: () => createMockClient(serverHandler),
+}));
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => createMockClient(adminHandler),
+}));
+
+import { POST } from "@/app/api/orders/route";
+
+const P1 = "b1c2d3e4-0004-4000-8000-000000000004";
+const PARTNER = "a1b2c3d4-0001-4000-8000-000000000001";
+const KEY = "c0ffee00-0001-4000-8000-000000000001";
+
+const rateRow = (charge: string) => ({
+  delivery_partner_id: PARTNER,
+  serviceable: true,
+  delivery_charge: charge,
+  eta_min_days: 2,
+  eta_max_days: 4,
+  min_order_amount: null,
+  max_order_amount: null,
+  delivery_partners: { name: "Delhivery", is_active: true, priority: 100 },
+});
+
+const post = (body: unknown) =>
+  POST(
+    new Request("http://localhost/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+
+const validBody = (over: Record<string, unknown> = {}) => ({
+  items: [{ productId: P1, quantity: 2 }],
+  customer: { name: "Demo Traders", phone: "+919876543210" },
+  pincode: "400001",
+  idempotencyKey: KEY,
+  ...over,
+});
+
+function wireDb(price: string, charge: string) {
+  // Summary rows mirror what the RPC would persist from the quote, so
+  // the response mapping is exercised end to end.
+  const subtotal = (Number(price) * 2).toFixed(2);
+  const total = (Number(subtotal) + Number(charge)).toFixed(2);
+  serverHandler = (op) => {
+    if (op.table === "products") {
+      return {
+        rows: [{ id: P1, name: "Trolley", price, is_active: true }],
+        error: null,
+      };
+    }
+    if (op.table === "delivery_pincode_rates") {
+      return { rows: [rateRow(charge)], error: null };
+    }
+    throw new Error(`unexpected server op on ${op.table}`);
+  };
+  adminHandler = (op) => {
+    if (op.rpc === "create_order") {
+      return { rows: "order-id-1" as unknown as unknown[], error: null };
+    }
+    if (op.table === "orders") {
+      return {
+        rows: [
+          {
+            id: "order-id-1",
+            order_number: "TS-261004-0001",
+            subtotal,
+            delivery_charge: charge,
+            total_amount: total,
+            payment_status: "pending",
+            order_status: "pending_payment",
+          },
+        ],
+        error: null,
+      };
+    }
+    throw new Error(`unexpected admin op on ${op.table ?? op.rpc}`);
+  };
+}
+
+describe("POST /api/orders (server-authoritative totals)", () => {
+  it("prices from live rows and returns the safe summary", async () => {
+    wireDb("6299.00", "450.00");
+    const res = await post(validBody());
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data).toMatchObject({
+      orderNumber: "TS-261004-0001",
+      subtotalPaise: 1259800,
+      deliveryChargePaise: 45000,
+      totalPaise: 1304800,
+      paymentStatus: "pending",
+      duplicate: false,
+    });
+    expect(json.data).not.toHaveProperty("customer_id");
+  });
+
+  it("ignores every client-submitted money/status field", async () => {
+    wireDb("6299.00", "450.00");
+    const res = await post(
+      validBody({
+        subtotal: 1,
+        deliveryCharge: 1,
+        total: 2,
+        total_amount: 2,
+        unitPrice: 1,
+        paymentStatus: "paid",
+        orderStatus: "delivered",
+        deliveryPartnerId: "00000000-0000-4000-8000-000000000000",
+      }),
+    );
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data.totalPaise).toBe(1304800);
+    expect(json.data.paymentStatus).toBe("pending");
+  });
+
+  it("charges the NEW price when the catalogue moved mid-checkout", async () => {
+    wireDb("7000.00", "450.00");
+    const res = await post(validBody());
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data.subtotalPaise).toBe(1400000);
+    expect(json.data.totalPaise).toBe(1445000);
+  });
+
+  it("uses the CURRENT delivery rate, never the browser's", async () => {
+    wireDb("6299.00", "700.00");
+    const res = await post(validBody());
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data.deliveryChargePaise).toBe(70000);
+  });
+
+  it("rejects inactive and unknown products", async () => {
+    serverHandler = (op) => {
+      if (op.table === "products") {
+        return {
+          rows: [{ id: P1, name: "Old", price: "1.00", is_active: false }],
+          error: null,
+        };
+      }
+      throw new Error("unreachable");
+    };
+    const res = await post(validBody());
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+
+    serverHandler = (op) => {
+      if (op.table === "products") return { rows: [], error: null };
+      throw new Error("unreachable");
+    };
+    const res2 = await post(validBody());
+    expect(((await res2.json()) as { ok: boolean }).ok).toBe(false);
+  });
+
+  it("rejects unserviceable pincodes", async () => {
+    serverHandler = (op) => {
+      if (op.table === "products") {
+        return {
+          rows: [{ id: P1, name: "T", price: "6299.00", is_active: true }],
+          error: null,
+        };
+      }
+      if (op.table === "delivery_pincode_rates") {
+        return { rows: [], error: null };
+      }
+      throw new Error("unreachable");
+    };
+    const res = await post(validBody({ pincode: "799001" }));
+    const json = (await res.json()) as {
+      ok: boolean;
+      error: { code: string };
+    };
+    expect(json.ok).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("replays duplicate submissions to the original order", async () => {
+    serverHandler = (op) => {
+      if (op.table === "products") {
+        return {
+          rows: [{ id: P1, name: "T", price: "6299.00", is_active: true }],
+          error: null,
+        };
+      }
+      if (op.table === "delivery_pincode_rates") {
+        return { rows: [rateRow("450.00")], error: null };
+      }
+      throw new Error("unreachable");
+    };
+    adminHandler = (op) => {
+      if (op.rpc === "create_order") {
+        return {
+          rows: [],
+          error: { message: "duplicate key", code: "23505" },
+        };
+      }
+      if (op.table === "orders") {
+        return {
+          rows: [
+            {
+              id: "order-id-1",
+              order_number: "TS-261004-0001",
+              subtotal: "12598.00",
+              delivery_charge: "450.00",
+              total_amount: "13048.00",
+              payment_status: "pending",
+              order_status: "pending_payment",
+            },
+          ],
+          error: null,
+        };
+      }
+      throw new Error("unreachable");
+    };
+    const res = await post(validBody());
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: Record<string, unknown>;
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data).toMatchObject({
+      orderNumber: "TS-261004-0001",
+      duplicate: true,
+    });
+  });
+
+  it("fails safe on database errors without leaking internals", async () => {
+    serverHandler = () => ({
+      rows: [],
+      error: { message: "connection refused: secret-host:5432", code: "XX000" },
+    });
+    const res = await post(validBody());
+    const json = (await res.json()) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+    expect(json.ok).toBe(false);
+    expect(json.error.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(json)).not.toContain("secret-host");
+  });
+});

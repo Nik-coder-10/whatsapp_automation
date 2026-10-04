@@ -1,3 +1,4 @@
+import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isValidPincode, normalizePincode } from "@/lib/validations/common";
 import { AppError } from "@/lib/api/errors";

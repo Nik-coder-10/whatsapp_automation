@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// request.ts pulls ORDER_MAX_QTY from the server-only quote module.
+vi.mock("server-only", () => ({}));
 import { parseOrderRequestBody } from "@/lib/orders/request";
 import { normalizePhone } from "@/lib/validations/common";
 import { AppError } from "@/lib/api/errors";
