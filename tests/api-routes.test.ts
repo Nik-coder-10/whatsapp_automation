@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockClient,
   type MockResponder,
 } from "@/tests/helpers/supabase-mock";
+import { resetRateLimits } from "@/lib/rate-limit/index";
+
+beforeEach(() => resetRateLimits());
 
 vi.mock("server-only", () => ({}));
 

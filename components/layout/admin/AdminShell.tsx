@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { AdminHeader } from "@/components/layout/admin/AdminHeader";
@@ -18,10 +19,13 @@ export function AdminShell({
 }: {
   title: string;
   subtitle?: string;
-  activeHref: string;
+  /** Defaults to the current pathname. */
+  activeHref?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
+  const current = activeHref ?? pathname;
   const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
@@ -43,7 +47,7 @@ export function AdminShell({
         <p className="px-3 py-2 text-base font-extrabold tracking-tight text-brand-900">
           TROLIFT <span className="text-xs font-bold text-zinc-500">Admin</span>
         </p>
-        <AdminSidebar activeHref={activeHref} />
+        <AdminSidebar activeHref={current} />
       </aside>
 
       {drawer ? (
@@ -67,7 +71,7 @@ export function AdminShell({
                 <span aria-hidden className="block text-lg leading-none">×</span>
               </button>
             </div>
-            <AdminSidebar activeHref={activeHref} onNavigate={() => setDrawer(false)} />
+            <AdminSidebar activeHref={current} onNavigate={() => setDrawer(false)} />
           </aside>
         </div>
       ) : null}

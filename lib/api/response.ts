@@ -42,3 +42,22 @@ export const unprocessable = (message: string, details?: unknown) =>
 
 export const internalError = (message = "Something went wrong. Please try again.") =>
   fail("INTERNAL_ERROR", message, { status: 500 });
+
+/** 429 with Retry-After. Message is generic — no quota details leak. */
+export function rateLimited(retryAfterMs: number): NextResponse<ApiFailure> {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: {
+        code: "RATE_LIMITED",
+        message: "Too many requests. Please try again shortly.",
+      },
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+      },
+    },
+  );
+}

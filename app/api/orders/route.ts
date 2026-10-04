@@ -1,5 +1,6 @@
-import { ok } from "@/lib/api/response";
+import { ok, rateLimited } from "@/lib/api/response";
 import { AppError, handleRouteError } from "@/lib/api/errors";
+import { checkRateLimit } from "@/lib/rate-limit/index";
 import { parseOrderRequestBody } from "@/lib/orders/request";
 import { quoteOrder } from "@/lib/orders/quote";
 import { fetchOrderSummary, persistOrder } from "@/lib/orders/create";
@@ -20,6 +21,8 @@ import { fetchOrderSummary, persistOrder } from "@/lib/orders/create";
  */
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, "orders");
+    if (!rl.allowed) return rateLimited(rl.resetMs);
     let body: unknown;
     try {
       body = (await req.json()) as unknown;

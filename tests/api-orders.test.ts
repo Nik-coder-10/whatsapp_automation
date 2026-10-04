@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockClient,
   type MockResponder,
 } from "@/tests/helpers/supabase-mock";
+import { resetRateLimits } from "@/lib/rate-limit/index";
+
+beforeEach(() => resetRateLimits());
 
 vi.mock("server-only", () => ({}));
 
@@ -251,6 +254,21 @@ describe("POST /api/orders (server-authoritative totals)", () => {
       orderNumber: "TS-261004-0001",
       duplicate: true,
     });
+  });
+
+  it("returns 429 once the per-minute budget is exhausted", async () => {
+    wireDb("6299.00", "450.00");
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const res = await post(
+        validBody({
+          idempotencyKey: `c0ffee00-0001-4000-8000-${i.toString(16).padStart(12, "0")}`,
+        }),
+      );
+      codes.push(res.status);
+    }
+    expect(codes.slice(0, 10).every((s) => s === 200)).toBe(true);
+    expect(codes[10]).toBe(429);
   });
 
   it("fails safe on database errors without leaking internals", async () => {
