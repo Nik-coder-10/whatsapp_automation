@@ -3,7 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 // See tests/payments.test.ts: bypass the server-only guard in tests.
 vi.mock("server-only", () => ({}));
 import { buildTimeline, maskPhone } from "@/lib/orders/display";
+import {
+  canTransition,
+  isCustomerCancellable,
+  isTerminalStatus,
+  ORDER_TRANSITIONS,
+} from "@/lib/orders/transitions";
 import { getPayableOrder } from "@/lib/payments/order";
+import type { OrderStatus } from "@/types";
 
 describe("buildTimeline (mirrors DB order_status)", () => {
   it("starts new orders at payment with placed done", () => {
@@ -39,6 +46,59 @@ describe("maskPhone", () => {
     expect(maskPhone("+919876543210")).toBe("••••••3210");
     expect(maskPhone(null)).toBe("—");
     expect(maskPhone("123")).toBe("••••");
+  });
+});
+
+describe("order transitions (single forward spine, no jumps)", () => {
+  const happy: Array<[OrderStatus, OrderStatus]> = [
+    ["draft", "pending_payment"],
+    ["draft", "payment_submitted"],
+    ["pending_payment", "payment_submitted"],
+    ["payment_submitted", "confirmed"],
+    ["paid", "confirmed"],
+    ["confirmed", "processing"],
+    ["processing", "dispatched"],
+    ["shipped", "dispatched"],
+    ["dispatched", "delivered"],
+  ];
+  it.each(happy)("allows %s → %s", (from, to) => {
+    expect(canTransition(from, to)).toBe(true);
+  });
+
+  const bad: Array<[OrderStatus, OrderStatus]> = [
+    ["pending_payment", "confirmed"],
+    ["pending_payment", "dispatched"],
+    ["payment_submitted", "dispatched"],
+    ["confirmed", "delivered"],
+    ["processing", "delivered"],
+    ["delivered", "cancelled"],
+    ["cancelled", "pending_payment"],
+    ["delivered", "processing"],
+    ["paid", "dispatched"],
+  ];
+  it.each(bad)("denies %s → %s", (from, to) => {
+    expect(canTransition(from, to)).toBe(false);
+  });
+
+  it("covers every schema status with no dead ends except terminals", () => {
+    const states = Object.keys(ORDER_TRANSITIONS) as OrderStatus[];
+    expect(states).toHaveLength(10);
+    for (const s of states) {
+      if (s === "delivered" || s === "cancelled") {
+        expect(isTerminalStatus(s)).toBe(true);
+      } else {
+        expect(isTerminalStatus(s)).toBe(false);
+      }
+    }
+  });
+
+  it("restricts customer cancellation to pre-fulfilment", () => {
+    for (const s of ["draft", "pending_payment", "payment_submitted"] as const) {
+      expect(isCustomerCancellable(s)).toBe(true);
+    }
+    for (const s of ["confirmed", "processing", "dispatched", "delivered", "cancelled"] as const) {
+      expect(isCustomerCancellable(s)).toBe(false);
+    }
   });
 });
 

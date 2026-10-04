@@ -101,6 +101,39 @@ export default async function OrderPage({
         · <OrderActions order={order} />
       </p>
 
+      <section aria-label="Shipment tracking" className="mt-6 rounded-lg border border-zinc-200 bg-white p-5">
+        <h2 className="text-base font-bold text-zinc-900">Shipment</h2>
+        {order.tracking ? (
+          <dl className="mt-2 flex flex-col gap-1 text-sm">
+            <div className="flex justify-between gap-2">
+              <dt className="text-zinc-500">Tracking number</dt>
+              <dd className="font-mono font-semibold text-zinc-900">{order.tracking.trackingNumber}</dd>
+            </div>
+            {order.tracking.estimatedDeliveryDate ? (
+              <div className="flex justify-between gap-2">
+                <dt className="text-zinc-500">Estimated delivery</dt>
+                <dd className="font-semibold text-zinc-900">{order.tracking.estimatedDeliveryDate}</dd>
+              </div>
+            ) : null}
+            {order.tracking.trackingUrl ? (
+              <a
+                href={order.tracking.trackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 text-sm font-semibold text-brand-700 hover:underline"
+              >
+                Track on courier website →
+              </a>
+            ) : null}
+          </dl>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-600">
+            Tracking details appear here once your order ships. Your order
+            number ({order.orderNumber}) is all you need until then.
+          </p>
+        )}
+      </section>
+
       <ol aria-label="Order progress" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {stages.map((s) => (
           <li

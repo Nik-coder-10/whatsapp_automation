@@ -17,11 +17,19 @@ export interface PayableOrderItem {
   lineTotalPaise: number;
 }
 
+export interface ShipmentTracking {
+  trackingNumber: string;
+  trackingUrl: string | null;
+  estimatedDeliveryDate: string | null;
+}
+
 export interface PayableOrder {
   id: string;
   orderNumber: string;
   customerName: string;
   customerPhone: string | null;
+  /** Shipment tracking (courier integration phase; null until then). */
+  tracking: ShipmentTracking | null;
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   subtotalPaise: number;
@@ -120,5 +128,8 @@ export async function getPayableOrder(
     })),
     paymentReference: p?.transaction_reference ?? null,
     createdAt: o.created_at,
+    // No courier integration yet: no tracking columns exist, so this is
+    // always null and the UI renders the "available after dispatch" note.
+    tracking: null,
   };
 }

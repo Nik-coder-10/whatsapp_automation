@@ -6,6 +6,7 @@ import {
   isValidPaymentReference,
   normalizePaymentReference,
 } from "@/lib/payments/claims";
+import { canTransition } from "@/lib/orders/transitions";
 import type { OrderStatus, PaymentStatus } from "@/types";
 
 /**
@@ -73,6 +74,14 @@ export async function submitPaymentClaim(input: {
     throw new AppError("NOT_FOUND", "No pending payment for this order.", 404);
   }
   assertClaimAllowed(paymentRow.status, orderRow.order_status);
+  // Lifecycle gate: the target state must be a legal transition.
+  if (!canTransition(orderRow.order_status, "payment_submitted")) {
+    throw new AppError(
+      "BAD_REQUEST",
+      "This order cannot accept a payment claim in its current state.",
+      409,
+    );
+  }
 
   const { error: refError } = await admin
     .from("payments")
