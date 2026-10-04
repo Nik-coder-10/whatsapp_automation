@@ -9,7 +9,7 @@
 
 export interface MockFilter {
   col: string;
-  op: "eq" | "neq" | "in" | "or" | "gte" | "lte";
+  op: "eq" | "neq" | "in" | "or" | "gte" | "lte" | "ilike";
   val: unknown;
 }
 
@@ -54,6 +54,8 @@ export interface MockBuilder {
   range(from: number, to: number): MockBuilder;
   update(values: unknown): MockBuilder;
   insert(values: unknown): MockBuilder;
+  delete(): MockBuilder;
+  ilike(col: string, pattern: unknown): MockBuilder;
   maybeSingle(): MockBuilder;
   single(): MockBuilder;
   then(
@@ -115,6 +117,9 @@ function builder(
     range: () => next({}),
     update: (values) => next({ updateValues: values }),
     insert: (values) => next({ updateValues: values }),
+    delete: () => next({}),
+    ilike: (col, pattern) =>
+      next({ filters: [...state.filters, { col, op: "ilike", val: pattern }] }),
     maybeSingle: () => next({ single: true }),
     single: () => next({ single: true }),
     then: (resolve, reject) => run(responder, table, state).then(resolve, reject),
