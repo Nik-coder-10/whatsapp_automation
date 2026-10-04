@@ -18,13 +18,13 @@ import {
 } from "@/lib/checkout/validation";
 import { isValidPincode, normalizePincode } from "@/lib/validations/common";
 import type { ApiResponse } from "@/types/api";
-import type { ServiceabilityResult } from "@/types";
+import type { DeliveryQuote } from "@/lib/delivery/engine";
 
 type DeliveryState =
   | { status: "idle" }
   | { status: "checking" }
-  | { status: "ok"; result: ServiceabilityResult }
-  | { status: "unavailable"; result: ServiceabilityResult }
+  | { status: "ok"; result: DeliveryQuote }
+  | { status: "unavailable"; result: DeliveryQuote }
   | { status: "error"; message: string };
 
 function Section({
@@ -79,12 +79,14 @@ export function CheckoutForm() {
     setErrors((e) => ({ ...e, pincode: undefined }));
     setDelivery({ status: "checking" });
     try {
-      const res = await fetch("/api/checkout/serviceability", {
+      // Server decides serviceability, partner and charge from the
+      // cart subtotal — the browser only displays the verdict.
+      const res = await fetch("/api/delivery/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pincode }),
+        body: JSON.stringify({ pincode, subtotalPaise }),
       });
-      const json = (await res.json()) as ApiResponse<ServiceabilityResult>;
+      const json = (await res.json()) as ApiResponse<DeliveryQuote>;
       if (!json.ok) {
         if (json.error.code === "VALIDATION_ERROR") {
           setErrors((e) => ({ ...e, pincode: json.error.message }));
@@ -130,7 +132,9 @@ export function CheckoutForm() {
   }
 
   const deliveryPaise =
-    delivery.status === "ok" ? (delivery.result.deliveryChargePaise ?? 0) : null;
+    delivery.status === "ok"
+      ? (delivery.result.selected?.deliveryChargePaise ?? 0)
+      : null;
   const totalPaise = deliveryPaise !== null ? subtotalPaise + deliveryPaise : null;
 
   return (
@@ -205,23 +209,29 @@ export function CheckoutForm() {
               </Button>
             </div>
             <div aria-live="polite">
-              {delivery.status === "ok" ? (
+              {delivery.status === "ok" && delivery.result.selected ? (
                 <Alert tone="success" title="Delivery available">
                   <p>
-                    Partner: <strong>{delivery.result.deliveryPartner}</strong>
+                    Partner: <strong>{delivery.result.selected.partner.name}</strong>
                   </p>
                   <p>
                     Delivery:{" "}
                     <strong>
                       {formatMoney({
-                        amountPaise: delivery.result.deliveryChargePaise ?? 0,
+                        amountPaise: delivery.result.selected.deliveryChargePaise,
                         currency: "INR",
                       })}
                     </strong>
-                    {delivery.result.etaDays
-                      ? ` · ${delivery.result.etaDays.min}–${delivery.result.etaDays.max} days`
+                    {delivery.result.selected.etaDays
+                      ? ` · ${delivery.result.selected.etaDays.min}–${delivery.result.selected.etaDays.max} days`
                       : null}
                   </p>
+                  {delivery.result.options.length > 1 ? (
+                    <p className="mt-1 text-xs">
+                      {delivery.result.options.length} partner options — best
+                      value selected for this order.
+                    </p>
+                  ) : null}
                 </Alert>
               ) : null}
               {delivery.status === "unavailable" ? (
