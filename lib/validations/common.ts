@@ -33,6 +33,17 @@ export function normalizePincode(value: string): string {
   return value.trim();
 }
 
+/**
+ * Canonical Indian mobile: last 10 digits with +91 prefix.
+ * Used for customer dedup — "+919876543210", "09876543210" and
+ * "9876543210" all identify the same customer.
+ */
+export function normalizePhone(value: string): string {
+  const digits = value.replace(/[^\d]/g, "");
+  const national = digits.length > 10 ? digits.slice(-10) : digits;
+  return `+91${national}`;
+}
+
 export function normalizeGstin(value: string): string {
   return value.trim().toUpperCase();
 }

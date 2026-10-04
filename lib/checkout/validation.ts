@@ -4,6 +4,7 @@ import {
   isValidIndianPhone,
   isValidPincode,
   normalizeGstin,
+  normalizePhone,
   normalizePincode,
 } from "@/lib/validations/common";
 
@@ -72,7 +73,7 @@ export function validateCheckoutForm(
 export function normalizeCheckoutForm(form: CheckoutFormData) {
   return {
     name: form.name.trim(),
-    phone: form.phone.trim(),
+    phone: normalizePhone(form.phone),
     email: form.email.trim() === "" ? null : form.email.trim(),
     gstin: form.gstin.trim() === "" ? null : normalizeGstin(form.gstin),
     pincode: normalizePincode(form.pincode),

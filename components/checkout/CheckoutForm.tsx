@@ -57,12 +57,24 @@ function Section({
  * delivery, plus an informational summary. Creates nothing — the order
  * API (with server-side repricing) and payment arrive in later phases.
  */
+interface PlacedOrder {
+  orderNumber: string;
+  totalPaise: number;
+  duplicate: boolean;
+}
+
 export function CheckoutForm() {
-  const { items, subtotalPaise } = useCart();
+  const { items, subtotalPaise, clearCart } = useCart();
   const [form, setForm] = useState<CheckoutFormData>(EMPTY_CHECKOUT_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
   const [delivery, setDelivery] = useState<DeliveryState>({ status: "idle" });
   const [reviewed, setReviewed] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const [placed, setPlaced] = useState<PlacedOrder | null>(null);
+  // One key per checkout attempt: retries and double-clicks replay to
+  // the same server order instead of duplicating it.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const set = (field: keyof CheckoutFormData, value: string) => {
     setForm((f) => ({ ...f, [field]: value }));
@@ -121,6 +133,98 @@ export function CheckoutForm() {
       if (first) document.getElementById(first)?.focus();
     }
   };
+
+  const placeOrder = async () => {
+    const result = validateCheckoutForm(form, items.length);
+    setErrors(result.errors);
+    setReviewed(false);
+    if (!result.valid) {
+      const first = (
+        ["name", "phone", "email", "gstin", "pincode"] as const
+      ).find((f) => result.errors[f]);
+      if (first) document.getElementById(first)?.focus();
+      return;
+    }
+    if (delivery.status !== "ok") {
+      setPlaceError(
+        "Check delivery availability for your pincode before placing the order.",
+      );
+      return;
+    }
+    setPlacing(true);
+    setPlaceError(null);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+          })),
+          customer: {
+            name: form.name,
+            phone: form.phone,
+            email: form.email,
+            gstin: form.gstin,
+          },
+          pincode: form.pincode,
+          idempotencyKey,
+        }),
+      });
+      const json = (await res.json()) as ApiResponse<{
+        orderNumber: string;
+        totalPaise: number;
+        duplicate: boolean;
+      }>;
+      if (!json.ok) {
+        setPlaceError(json.error.message);
+        return;
+      }
+      setPlaced({
+        orderNumber: json.data.orderNumber,
+        totalPaise: json.data.totalPaise,
+        duplicate: json.data.duplicate,
+      });
+      clearCart();
+    } catch {
+      setPlaceError("Could not reach the server. Please try again.");
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  if (placed) {
+    return (
+      <div role="status" className="rounded-lg border border-green-300 bg-green-50 p-6 text-center">
+        <p className="text-sm font-bold tracking-wide text-green-800 uppercase">
+          Order placed
+        </p>
+        <p className="mt-2 text-2xl font-extrabold tracking-tight text-zinc-900">
+          {placed.orderNumber}
+        </p>
+        <p className="mt-2 text-sm text-zinc-600">
+          Total{" "}
+          {formatMoney({ amountPaise: placed.totalPaise, currency: "INR" })} ·
+          payment pending — UPI payment arrives in the next phase.
+        </p>
+        <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+          <Link
+            href="/products"
+            className="inline-flex h-11 items-center justify-center rounded-md bg-brand-800 px-5 text-sm font-bold text-white hover:bg-brand-700"
+          >
+            Continue browsing
+          </Link>
+          <Link
+            href="/cart"
+            className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
+          >
+            Back to cart
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -300,16 +404,29 @@ export function CheckoutForm() {
         </p>
         {reviewed ? (
           <Alert tone="success" title="Details look good">
-            Your information validates. Payment and order placement arrive
-            in the next phase.
+            Your information validates. Place the order when ready — payment
+            arrives in the next phase.
+          </Alert>
+        ) : null}
+        {placeError ? (
+          <Alert tone="error" title="Could not place the order">
+            {placeError}
           </Alert>
         ) : null}
         <div className="mt-4 flex flex-col gap-2">
-          <Button type="submit" variant="primary">
+          <Button type="submit" variant="secondary">
             Review details
           </Button>
           <Button
-            variant="secondary"
+            type="button"
+            variant="primary"
+            onClick={placeOrder}
+            loading={placing}
+          >
+            Place Order
+          </Button>
+          <Button
+            variant="ghost"
             disabled
             title="Payment — coming in the payment phase"
           >
