@@ -13,6 +13,7 @@
 | `0010_partner_priority.sql` | `delivery_partners.priority` (lower wins; default 100) + index for engine selection. |
 | `0012_payment_states.sql` | Payment lifecycle (`pending→submitted→paid/failed/cancelled/refunded`) + order states (`payment_submitted`, `processing`, `dispatched`). |
 | `0013_admin_dashboard.sql` | Self-guarding `get_admin_dashboard()` RPC (counts, paid revenue, claims, recent orders). |
+| `0014_order_events.sql` | Append-only `order_events` audit log (admin read/insert, no updates). |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
