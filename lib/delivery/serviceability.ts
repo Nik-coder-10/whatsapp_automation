@@ -80,6 +80,7 @@ export async function checkServiceability(
     pincode,
     serviceable: true,
     deliveryPartner: partnerName,
+    deliveryChargePaise: Math.round(Number(best.delivery_charge) * 100),
     ...(best.eta_min_days !== null && best.eta_max_days !== null
       ? { etaDays: { min: best.eta_min_days, max: best.eta_max_days } }
       : {}),

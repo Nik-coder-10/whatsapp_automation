@@ -48,6 +48,8 @@ export interface ServiceabilityResult {
   pincode: string;
   serviceable: boolean;
   deliveryPartner?: string;
+  /** Cheapest serviceable charge, integer paise (server-computed). */
+  deliveryChargePaise?: number;
   etaDays?: { min: number; max: number };
   reason?: string;
 }

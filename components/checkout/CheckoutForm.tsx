@@ -1,0 +1,323 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useCart } from "@/components/cart/CartProvider";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { PriceDisplay } from "@/components/ui/PriceDisplay";
+import { EmptyState } from "@/components/ui/States";
+import { formatMoney } from "@/lib/orders/pricing";
+import {
+  EMPTY_CHECKOUT_FORM,
+  validateCheckoutForm,
+  type CheckoutErrors,
+  type CheckoutFormData,
+} from "@/lib/checkout/validation";
+import { isValidPincode, normalizePincode } from "@/lib/validations/common";
+import type { ApiResponse } from "@/types/api";
+import type { ServiceabilityResult } from "@/types";
+
+type DeliveryState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "ok"; result: ServiceabilityResult }
+  | { status: "unavailable"; result: ServiceabilityResult }
+  | { status: "error"; message: string };
+
+function Section({
+  n,
+  title,
+  children,
+}: {
+  n: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label={title} className="rounded-lg border border-zinc-200 bg-white p-5">
+      <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
+        <span
+          aria-hidden
+          className="flex h-6 w-6 items-center justify-center rounded bg-brand-800 text-xs font-bold text-white"
+        >
+          {n}
+        </span>
+        {title}
+      </h2>
+      <div className="mt-4 flex flex-col gap-4">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * Checkout form: customer + GSTIN + pincode with server-checked
+ * delivery, plus an informational summary. Creates nothing — the order
+ * API (with server-side repricing) and payment arrive in later phases.
+ */
+export function CheckoutForm() {
+  const { items, subtotalPaise } = useCart();
+  const [form, setForm] = useState<CheckoutFormData>(EMPTY_CHECKOUT_FORM);
+  const [errors, setErrors] = useState<CheckoutErrors>({});
+  const [delivery, setDelivery] = useState<DeliveryState>({ status: "idle" });
+  const [reviewed, setReviewed] = useState(false);
+
+  const set = (field: keyof CheckoutFormData, value: string) => {
+    setForm((f) => ({ ...f, [field]: value }));
+    setReviewed(false);
+    if (field === "pincode") setDelivery({ status: "idle" });
+  };
+
+  const checkDelivery = async () => {
+    const pincode = normalizePincode(form.pincode);
+    if (!isValidPincode(pincode)) {
+      setErrors((e) => ({ ...e, pincode: "Enter a valid 6-digit delivery pincode." }));
+      return;
+    }
+    setErrors((e) => ({ ...e, pincode: undefined }));
+    setDelivery({ status: "checking" });
+    try {
+      const res = await fetch("/api/checkout/serviceability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pincode }),
+      });
+      const json = (await res.json()) as ApiResponse<ServiceabilityResult>;
+      if (!json.ok) {
+        if (json.error.code === "VALIDATION_ERROR") {
+          setErrors((e) => ({ ...e, pincode: json.error.message }));
+          setDelivery({ status: "idle" });
+        } else {
+          setDelivery({ status: "error", message: json.error.message });
+        }
+        return;
+      }
+      setDelivery(
+        json.data.serviceable
+          ? { status: "ok", result: json.data }
+          : { status: "unavailable", result: json.data },
+      );
+    } catch {
+      setDelivery({
+        status: "error",
+        message: "Could not reach the server. Please try again.",
+      });
+    }
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const result = validateCheckoutForm(form, items.length);
+    setErrors(result.errors);
+    setReviewed(result.valid);
+    if (!result.valid) {
+      const first = (
+        ["name", "phone", "email", "gstin", "pincode"] as const
+      ).find((f) => result.errors[f]);
+      if (first) document.getElementById(first)?.focus();
+    }
+  };
+
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="Your cart is empty"
+        message="Add products before checking out."
+      />
+    );
+  }
+
+  const deliveryPaise =
+    delivery.status === "ok" ? (delivery.result.deliveryChargePaise ?? 0) : null;
+  const totalPaise = deliveryPaise !== null ? subtotalPaise + deliveryPaise : null;
+
+  return (
+    <form noValidate onSubmit={submit} className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <Section n="1" title="Customer information">
+          <Input
+            label="Full name"
+            name="name"
+            autoComplete="name"
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            error={errors.name}
+          />
+          <Input
+            label="Mobile number"
+            name="phone"
+            autoComplete="tel"
+            inputMode="tel"
+            placeholder="10-digit mobile"
+            value={form.phone}
+            onChange={(e) => set("phone", e.target.value)}
+            error={errors.phone}
+          />
+          <Input
+            label="Email (optional)"
+            name="email"
+            type="email"
+            autoComplete="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            error={errors.email}
+          />
+        </Section>
+
+        <Section n="2" title="GST information">
+          <Input
+            label="GSTIN (optional)"
+            name="gstin"
+            autoComplete="off"
+            placeholder="15-character GSTIN"
+            value={form.gstin}
+            onChange={(e) => set("gstin", e.target.value)}
+            error={errors.gstin}
+            hint="GST number is optional. Leave blank if you don't need a GST invoice."
+          />
+        </Section>
+
+        <Section n="3" title="Delivery information">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <Input
+                  label="Delivery Pincode"
+                  name="pincode"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  placeholder="6-digit pincode"
+                  value={form.pincode}
+                  onChange={(e) => set("pincode", e.target.value)}
+                  error={errors.pincode}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={checkDelivery}
+                loading={delivery.status === "checking"}
+                className="shrink-0"
+              >
+                Check Delivery
+              </Button>
+            </div>
+            <div aria-live="polite">
+              {delivery.status === "ok" ? (
+                <Alert tone="success" title="Delivery available">
+                  <p>
+                    Partner: <strong>{delivery.result.deliveryPartner}</strong>
+                  </p>
+                  <p>
+                    Delivery:{" "}
+                    <strong>
+                      {formatMoney({
+                        amountPaise: delivery.result.deliveryChargePaise ?? 0,
+                        currency: "INR",
+                      })}
+                    </strong>
+                    {delivery.result.etaDays
+                      ? ` · ${delivery.result.etaDays.min}–${delivery.result.etaDays.max} days`
+                      : null}
+                  </p>
+                </Alert>
+              ) : null}
+              {delivery.status === "unavailable" ? (
+                <Alert tone="warning" title="Delivery unavailable for this pincode.">
+                  {delivery.result.reason ??
+                    "Our delivery partners do not serve this pincode yet."}
+                </Alert>
+              ) : null}
+              {delivery.status === "error" ? (
+                <Alert tone="error" title="Delivery check failed">
+                  {delivery.message}
+                </Alert>
+              ) : null}
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      <aside aria-label="Order summary" className="h-fit rounded-lg border border-zinc-200 bg-white p-5 lg:sticky lg:top-20">
+        <h2 className="text-base font-bold text-zinc-900">Order summary</h2>
+        <ul className="mt-3 flex flex-col gap-2 border-b border-zinc-100 pb-3">
+          {items.map((item) => (
+            <li key={item.productId} className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-zinc-700">
+                {item.name} × {item.quantity}
+              </span>
+              <span className="shrink-0 font-semibold text-zinc-900">
+                ₹{((item.pricePaise * item.quantity) / 100).toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <dl className="mt-3 flex flex-col gap-1.5 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-zinc-600">Items ({items.length})</dt>
+            <dd className="font-semibold text-zinc-900">
+              <PriceDisplay amountPaise={subtotalPaise} size="sm" />
+            </dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-zinc-600">Delivery</dt>
+            <dd className="font-semibold text-zinc-900">
+              {deliveryPaise !== null ? (
+                <PriceDisplay amountPaise={deliveryPaise} size="sm" />
+              ) : (
+                <span className="text-zinc-400">Check pincode</span>
+              )}
+            </dd>
+          </div>
+          <div className="flex justify-between border-t border-zinc-100 pt-2 text-base">
+            <dt className="font-bold text-zinc-900">Total</dt>
+            <dd className="font-bold text-zinc-900">
+              {totalPaise !== null ? (
+                <PriceDisplay amountPaise={totalPaise} size="md" />
+              ) : (
+                <span className="text-zinc-400">—</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-2 text-xs leading-5 text-zinc-500">
+          Informational only — delivery and the final total are confirmed
+          server-side when you place the order.
+        </p>
+        {reviewed ? (
+          <Alert tone="success" title="Details look good">
+            Your information validates. Payment and order placement arrive
+            in the next phase.
+          </Alert>
+        ) : null}
+        <div className="mt-4 flex flex-col gap-2">
+          <Button type="submit" variant="primary">
+            Review details
+          </Button>
+          <Button
+            variant="secondary"
+            disabled
+            title="Payment — coming in the payment phase"
+          >
+            Continue to Payment — soon
+          </Button>
+          <Link
+            href="/cart"
+            className="inline-flex h-11 items-center justify-center rounded-md px-5 text-sm font-bold text-brand-700 hover:underline"
+          >
+            Edit cart
+          </Link>
+        </div>
+        {delivery.status === "unavailable" ? (
+          <p className="mt-2 text-xs leading-5 text-amber-800">
+            Resolve delivery availability before continuing to payment.
+          </p>
+        ) : null}
+      </aside>
+    </form>
+  );
+}
