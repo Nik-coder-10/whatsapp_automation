@@ -128,7 +128,7 @@ export function Navbar() {
   }, [open ]);
 
   return (
-    <header className="sticky top-0 z-40 bg-brand-900 text-white shadow-md">
+    <header className="sticky top-0 z-40 bg-brand-900 text-white shadow-md print:hidden">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
         <Link href="/" aria-label={`${siteConfig.name} — home`} className="shrink-0">
           <BrandMark />

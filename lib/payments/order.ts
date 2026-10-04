@@ -21,11 +21,15 @@ export interface PayableOrder {
   id: string;
   orderNumber: string;
   customerName: string;
+  customerPhone: string | null;
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   subtotalPaise: number;
   deliveryChargePaise: number;
   totalPaise: number;
+  deliveryPincode: string;
+  deliveryPartnerName: string;
+  gstinSnapshot: string | null;
   items: PayableOrderItem[];
   paymentReference: string | null;
   createdAt: string;
@@ -44,6 +48,7 @@ export async function getPayableOrder(
     .from("orders")
     .select(
       "id,order_number,customer_id,subtotal,delivery_charge,total_amount," +
+        "delivery_pincode,delivery_partner_name,gstin_snapshot," +
         "payment_status,order_status,created_at",
     )
     .eq("id", orderId)
@@ -55,6 +60,9 @@ export async function getPayableOrder(
     subtotal: string;
     delivery_charge: string;
     total_amount: string;
+    delivery_pincode: string;
+    delivery_partner_name: string;
+    gstin_snapshot: string | null;
     payment_status: PaymentStatus;
     order_status: OrderStatus;
     created_at: string;
@@ -63,7 +71,11 @@ export async function getPayableOrder(
 
   const [{ data: customer }, { data: items }, { data: payment }] =
     await Promise.all([
-      admin.from("customers").select("name").eq("id", o.customer_id).maybeSingle(),
+      admin
+        .from("customers")
+        .select("name,phone")
+        .eq("id", o.customer_id)
+        .maybeSingle(),
       admin
         .from("order_items")
         .select("product_name,quantity,line_total")
@@ -77,7 +89,7 @@ export async function getPayableOrder(
         .limit(1)
         .maybeSingle(),
     ]);
-  const c = customer as unknown as { name: string } | null;
+  const c = customer as unknown as { name: string; phone: string | null } | null;
   const rows = (items ?? []) as unknown as Array<{
     product_name: string;
     quantity: number;
@@ -92,8 +104,12 @@ export async function getPayableOrder(
     id: o.id,
     orderNumber: o.order_number,
     customerName: c?.name ?? "Customer",
+    customerPhone: c?.phone ?? null,
     orderStatus: o.order_status,
     paymentStatus: p?.status ?? o.payment_status,
+    deliveryPincode: o.delivery_pincode,
+    deliveryPartnerName: o.delivery_partner_name,
+    gstinSnapshot: o.gstin_snapshot,
     subtotalPaise: toPaise(o.subtotal),
     deliveryChargePaise: toPaise(o.delivery_charge),
     totalPaise: toPaise(o.total_amount),

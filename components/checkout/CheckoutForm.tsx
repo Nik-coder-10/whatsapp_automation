@@ -220,8 +220,14 @@ export function CheckoutForm() {
             Pay Now
           </Link>
           <Link
-            href="/products"
+            href={`/orders/${placed.orderId}`}
             className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
+          >
+            View order
+          </Link>
+          <Link
+            href="/products"
+            className="inline-flex h-11 items-center justify-center rounded-md px-5 text-sm font-bold text-brand-700 hover:underline"
           >
             Continue browsing
           </Link>

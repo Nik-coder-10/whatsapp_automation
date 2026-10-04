@@ -1,0 +1,230 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { Alert } from "@/components/ui/Alert";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
+import { PriceDisplay } from "@/components/ui/PriceDisplay";
+import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadge";
+import { OrderActions } from "@/components/orders/OrderActions";
+import { getPayableOrder } from "@/lib/payments/order";
+import { buildTimeline, maskPhone } from "@/lib/orders/display";
+
+async function loadOrder(id: string) {
+  try {
+    return await getPayableOrder(id);
+  } catch (error) {
+    // Fail closed: unreadable orders look exactly like missing ones.
+    console.error("[order] Failed to load order:", error);
+    return null;
+  }
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const order = await loadOrder(id);
+  return {
+    title: order ? `Order ${order.orderNumber}` : "Order not found",
+    description: "View your Trolift order status and details.",
+    robots: { index: false, follow: false },
+  };
+}
+
+/**
+ * Order confirmation + details (guest-capable via unguessable order
+ * UUID, noindex). Everything renders server-side from DB snapshots,
+ * so refresh and revisit are always correct.
+ */
+export default async function OrderPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { id } = await params;
+  const order = await loadOrder(id);
+  if (!order) notFound();
+
+  const sp = await searchParams;
+  const fresh = sp["fresh"] === "1";
+  const { stages, cancelled } = buildTimeline(order.orderStatus);
+  const payable =
+    (order.paymentStatus === "pending" || order.paymentStatus === "failed") &&
+    (order.orderStatus === "pending_payment" || order.orderStatus === "draft");
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+      <Breadcrumbs
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Products", href: "/products" },
+          { label: `Order ${order.orderNumber}` },
+        ]}
+      />
+
+      {fresh && !cancelled ? (
+        <div role="status" className="mt-4">
+          <Alert tone="success" title="Order placed successfully">
+            Order {order.orderNumber} is confirmed in our system.
+            {order.paymentStatus === "pending"
+              ? " Complete the payment below to get it moving."
+              : null}
+          </Alert>
+        </div>
+      ) : null}
+
+      {cancelled ? (
+        <div className="mt-4">
+          <Alert tone="error" title="This order was cancelled">
+            Contact sales if you need help placing a fresh order.
+          </Alert>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-extrabold tracking-tight text-zinc-900 sm:text-3xl">
+          Order {order.orderNumber}
+        </h1>
+        <OrderStatusBadge status={order.orderStatus} />
+        <PaymentStatusBadge status={order.paymentStatus} />
+      </div>
+      <p className="mt-1 text-sm text-zinc-600">
+        Placed {new Date(order.createdAt).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })}{" "}
+        · <OrderActions order={order} />
+      </p>
+
+      <ol aria-label="Order progress" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {stages.map((s) => (
+          <li
+            key={s.key}
+            aria-current={s.state === "current" ? "step" : undefined}
+            className={`rounded-md border px-2 py-2.5 text-center ${
+              s.state === "done"
+                ? "border-green-300 bg-green-50"
+                : s.state === "current"
+                  ? "border-brand-700 bg-brand-50"
+                  : "border-zinc-200 bg-white"
+            }`}
+          >
+            <p
+              className={`text-xs font-bold ${
+                s.state === "todo" ? "text-zinc-400" : "text-zinc-900"
+              }`}
+            >
+              {s.state === "done" ? "✓ " : ""}
+              {s.label}
+            </p>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <section aria-label="Items" className="rounded-lg border border-zinc-200 bg-white p-5">
+            <h2 className="text-base font-bold text-zinc-900">Items</h2>
+            <ul className="mt-3 flex flex-col gap-2">
+              {order.items.map((item) => (
+                <li key={`${item.name}-${item.quantity}`} className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-zinc-700">
+                    {item.name} × {item.quantity}
+                  </span>
+                  <span className="shrink-0 font-semibold text-zinc-900">
+                    <PriceDisplay amountPaise={item.lineTotalPaise} size="sm" />
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <dl className="mt-3 flex flex-col gap-1.5 border-t border-zinc-100 pt-3 text-sm">
+              <div className="flex justify-between">
+                <dt className="text-zinc-600">Subtotal</dt>
+                <dd className="font-semibold text-zinc-900">
+                  <PriceDisplay amountPaise={order.subtotalPaise} size="sm" />
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-zinc-600">Delivery ({order.deliveryPartnerName})</dt>
+                <dd className="font-semibold text-zinc-900">
+                  <PriceDisplay amountPaise={order.deliveryChargePaise} size="sm" />
+                </dd>
+              </div>
+              <div className="flex justify-between border-t border-zinc-100 pt-2 text-base">
+                <dt className="font-bold text-zinc-900">Total</dt>
+                <dd className="font-bold text-zinc-900">
+                  <PriceDisplay amountPaise={order.totalPaise} size="md" />
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section aria-label="Delivery details" className="rounded-lg border border-zinc-200 bg-white p-5">
+            <h2 className="text-base font-bold text-zinc-900">Delivery</h2>
+            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-zinc-500">Customer</dt>
+                <dd className="font-semibold text-zinc-900">{order.customerName}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Phone</dt>
+                <dd className="font-semibold text-zinc-900">{maskPhone(order.customerPhone)}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Pincode</dt>
+                <dd className="font-semibold text-zinc-900">{order.deliveryPincode}</dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Partner</dt>
+                <dd className="font-semibold text-zinc-900">{order.deliveryPartnerName}</dd>
+              </div>
+              {order.gstinSnapshot ? (
+                <div>
+                  <dt className="text-zinc-500">GSTIN</dt>
+                  <dd className="font-semibold text-zinc-900">{order.gstinSnapshot}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </section>
+        </div>
+
+        <aside aria-label="Payment" className="h-fit rounded-lg border border-zinc-200 bg-white p-5 lg:sticky lg:top-20">
+          <h2 className="text-base font-bold text-zinc-900">Payment</h2>
+          <div className="mt-2">
+            <PaymentStatusBadge status={order.paymentStatus} />
+          </div>
+          {order.paymentStatus === "pending" || order.paymentStatus === "failed" ? (
+            <div className="mt-3 flex flex-col gap-2">
+              <p className="text-sm text-zinc-600">
+                {order.paymentStatus === "failed"
+                  ? "The last attempt failed — try paying again."
+                  : "Payment pending."}
+              </p>
+              {payable ? (
+                <Link
+                  href={`/orders/${order.id}/pay`}
+                  className="inline-flex h-12 items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
+                >
+                  Complete Payment
+                </Link>
+              ) : null}
+            </div>
+          ) : order.paymentStatus === "submitted" ? (
+            <p className="mt-3 text-sm leading-6 text-zinc-600">
+              Payment verification pending — we confirm your order after
+              verifying the payment. This usually happens within a few
+              business hours.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-zinc-600">Payment confirmed.</p>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}

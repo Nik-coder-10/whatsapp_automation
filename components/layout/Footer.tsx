@@ -10,7 +10,7 @@ import { slugifyCategory } from "@/lib/catalog/products";
 export function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="bg-brand-950 text-brand-100">
+    <footer className="bg-brand-950 text-brand-100 print:hidden">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
         <div>
           <p className="text-lg font-extrabold tracking-tight text-white">
