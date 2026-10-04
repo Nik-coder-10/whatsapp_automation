@@ -174,7 +174,9 @@ export function createMockClient(
         single: false,
         updateValues: undefined,
       });
-      return Promise.resolve({ data: r.rows, error: r.error });
+      // Like postgrest-js: a single jsonb/scalar row arrives unwrapped.
+      const data = r.rows.length === 1 ? r.rows[0] : r.rows;
+      return Promise.resolve({ data, error: r.error });
     },
   };
 }

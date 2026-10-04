@@ -48,7 +48,9 @@ begin
     return v_existing;
   end if;
 
-  -- Customer upsert by phone; refresh details on repeat orders.
+  -- Customer upsert by phone. Repeat orders refresh the name but only
+  -- overwrite email/GSTIN when the new payload actually provides them —
+  -- a guest checkout without GSTIN must never wipe a stored GSTIN.
   insert into public.customers (name, phone, email, gstin)
   values (
     p_customer ->> 'name',
@@ -58,8 +60,8 @@ begin
   )
   on conflict (phone) do update set
     name = excluded.name,
-    email = excluded.email,
-    gstin = excluded.gstin,
+    email = coalesce(excluded.email, public.customers.email),
+    gstin = coalesce(excluded.gstin, public.customers.gstin),
     updated_at = now()
   returning id into v_customer_id;
 
