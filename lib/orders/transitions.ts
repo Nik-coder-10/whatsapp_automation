@@ -1,4 +1,4 @@
-import type { OrderStatus } from "@/types";
+import type { OrderStatus, PaymentStatus } from "@/types";
 
 /**
  * Order lifecycle transitions (pure, unit-tested).
@@ -11,6 +11,10 @@ import type { OrderStatus } from "@/types";
  * before fulfilment starts (draft/pending_payment/payment_submitted);
  * everything later is admin-controlled. Terminal states (delivered,
  * cancelled) have no exits.
+ *
+ * One designed backward step exists: payment_submitted → pending_payment
+ * when an admin rejects a payment claim, reopening the order for a
+ * retry. It is explicit here — not an arbitrary jump.
  *
  * Enforced wherever statuses change server-side (claim API now, admin
  * mutations next) so arbitrary jumps are structurally impossible.
@@ -27,7 +31,7 @@ const CUSTOMER_CANCELLABLE: ReadonlyArray<OrderStatus> = [
 export const ORDER_TRANSITIONS: TransitionMap = {
   draft: ["pending_payment", "payment_submitted", "cancelled"],
   pending_payment: ["payment_submitted", "cancelled"],
-  payment_submitted: ["confirmed", "cancelled"],
+  payment_submitted: ["confirmed", "pending_payment", "cancelled"],
   paid: ["confirmed", "cancelled"],
   confirmed: ["processing", "cancelled"],
   processing: ["dispatched", "cancelled"],
@@ -49,4 +53,26 @@ export function isCustomerCancellable(status: OrderStatus): boolean {
 /** True for end states with no onward movement. */
 export function isTerminalStatus(status: OrderStatus): boolean {
   return ORDER_TRANSITIONS[status].length === 0;
+}
+
+/**
+ * Payment lifecycle transitions. Customer claims move pending/failed →
+ * submitted; only admin verification moves submitted → paid, and only
+ * admin rejection moves submitted → failed. Paid orders refund; nothing
+ * ever moves back to pending.
+ */
+export const PAYMENT_TRANSITIONS: Record<PaymentStatus, ReadonlyArray<PaymentStatus>> = {
+  pending: ["submitted", "cancelled"],
+  submitted: ["paid", "failed", "cancelled"],
+  failed: ["submitted"],
+  paid: ["refunded"],
+  cancelled: [],
+  refunded: [],
+};
+
+export function canTransitionPayment(
+  from: PaymentStatus,
+  to: PaymentStatus,
+): boolean {
+  return PAYMENT_TRANSITIONS[from].includes(to);
 }

@@ -9,7 +9,7 @@
 
 export interface MockFilter {
   col: string;
-  op: "eq" | "neq" | "in";
+  op: "eq" | "neq" | "in" | "or" | "gte" | "lte";
   val: unknown;
 }
 
@@ -46,10 +46,14 @@ export interface MockBuilder {
   eq(col: string, val: unknown): MockBuilder;
   neq(col: string, val: unknown): MockBuilder;
   in(col: string, val: unknown): MockBuilder;
+  or(raw: string): MockBuilder;
+  gte(col: string, val: unknown): MockBuilder;
+  lte(col: string, val: unknown): MockBuilder;
   order(col: string, opts?: unknown): MockBuilder;
   limit(n: number): MockBuilder;
   range(from: number, to: number): MockBuilder;
   update(values: unknown): MockBuilder;
+  insert(values: unknown): MockBuilder;
   maybeSingle(): MockBuilder;
   single(): MockBuilder;
   then(
@@ -100,10 +104,17 @@ function builder(
       next({ filters: [...state.filters, { col, op: "neq", val }] }),
     in: (col, val) =>
       next({ filters: [...state.filters, { col, op: "in", val }] }),
+    or: (raw) =>
+      next({ filters: [...state.filters, { col: "", op: "or", val: raw }] }),
+    gte: (col, val) =>
+      next({ filters: [...state.filters, { col, op: "gte", val }] }),
+    lte: (col, val) =>
+      next({ filters: [...state.filters, { col, op: "lte", val }] }),
     order: () => next({}),
     limit: () => next({}),
     range: () => next({}),
     update: (values) => next({ updateValues: values }),
+    insert: (values) => next({ updateValues: values }),
     maybeSingle: () => next({ single: true }),
     single: () => next({ single: true }),
     then: (resolve, reject) => run(responder, table, state).then(resolve, reject),
@@ -115,17 +126,40 @@ function fresh(): BuilderState {
   return { filters: [], single: false, updateValues: undefined };
 }
 
+export interface MockUser {
+  id: string;
+  email?: string;
+}
+
 export interface MockClient {
   from(table: string): MockBuilder;
   rpc(
     name: string,
     args: unknown,
   ): Promise<{ data: unknown; error: unknown }>;
+  auth: {
+    getUser(): Promise<{
+      data: { user: MockUser | null };
+      error: { message: string } | null;
+    }>;
+  };
 }
 
-export function createMockClient(responder: MockResponder): MockClient {
+export function createMockClient(
+  responder: MockResponder,
+  opts?: { authUser?: MockUser | null },
+): MockClient {
+  const hasAuth = opts && "authUser" in opts;
   return {
     from: (table: string) => builder(responder, table, fresh()),
+    auth: {
+      getUser: () =>
+        Promise.resolve(
+          hasAuth
+            ? { data: { user: opts?.authUser ?? null }, error: null }
+            : { data: { user: null }, error: { message: "no session" } },
+        ),
+    },
     rpc: (name: string, args: unknown) => {
       const r = responder({
         table: null,
