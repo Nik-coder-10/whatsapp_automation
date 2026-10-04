@@ -6,8 +6,8 @@
  *   secret is missing instead of failing silently downstream.
  *
  * Never import serverEnv (or anything that imports it) from client
- * components. Supabase service-role keys, WhatsApp tokens and the
- * owner UPI id stay on the server.
+ * components. The Supabase service-role key and the owner UPI id stay
+ * on the server.
  */
 
 function required(name: string): string {
@@ -39,13 +39,6 @@ export function serverEnv() {
     serviceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
     ownerUpiId: optional("OWNER_UPI_ID"),
     ownerUpiPayeeName: optional("OWNER_UPI_PAYEE_NAME"),
-    whatsapp: {
-      baseUrl: optional("WHATSAPP_API_BASE_URL"),
-      version: optional("WHATSAPP_API_VERSION", "v21.0"),
-      phoneNumberId: optional("WHATSAPP_PHONE_NUMBER_ID"),
-      accessToken: optional("WHATSAPP_ACCESS_TOKEN"),
-      webhookVerifyToken: optional("WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
-    },
   } as const;
 }
 

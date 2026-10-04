@@ -4,7 +4,7 @@ export interface AdminNavItem {
   label: string;
   href: string;
   /** Simple glyph identifier for the inline icon. */
-  icon: "dashboard" | "box" | "users" | "orders" | "payments" | "truck" | "chat" | "settings";
+  icon: "dashboard" | "box" | "users" | "orders" | "payments" | "truck" | "settings";
 }
 
 export const ADMIN_NAV: AdminNavItem[] = [
@@ -14,7 +14,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Orders", href: "/admin/orders", icon: "orders" },
   { label: "Payments", href: "/admin/payments", icon: "payments" },
   { label: "Delivery", href: "/admin/delivery", icon: "truck" },
-  { label: "WhatsApp", href: "/admin/whatsapp", icon: "chat" },
   { label: "Settings", href: "/admin/settings", icon: "settings" },
 ];
 
@@ -26,7 +25,6 @@ function Icon({ name }: { name: AdminNavItem["icon"] }) {
     orders: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5",
     payments: "M3 7h18v10H3zM3 10h18M7 15h4",
     truck: "M2 6h12v10H2zM14 10h4l4 4v2h-8M6 19a1.8 1.8 0 100-3.6A1.8 1.8 0 006 19zM18 19a1.8 1.8 0 100-3.6A1.8 1.8 0 0018 19z",
-    chat: "M4 5h16v11H9l-5 4z",
     settings: "M12 8a4 4 0 100 8 4 4 0 000-8zM4 12h3M17 12h3M12 4v3M12 17v3",
   };
   return (

@@ -24,20 +24,6 @@ export type PaymentMethod =
   | "card"
   | "other";
 
-export type WhatsappDeliveryStatus =
-  | "queued"
-  | "sent"
-  | "delivered"
-  | "read"
-  | "failed";
-
-export type WhatsappMessageType =
-  | "order_confirmation"
-  | "order_status"
-  | "payment_reminder"
-  | "lead_followup"
-  | "other";
-
 export interface Money {
   /** Amount in the smallest currency unit (paise for INR). */
   amountPaise: number;

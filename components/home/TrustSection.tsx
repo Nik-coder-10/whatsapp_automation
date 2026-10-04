@@ -9,7 +9,7 @@ const PILLARS = [
   },
   {
     title: "Delivery you can plan around",
-    desc: "Serviceability checked before payment across a multi-partner freight network, with order tracking on WhatsApp.",
+    desc: "Serviceability checked before payment across a multi-partner freight network, with status updates as your order moves.",
   },
   {
     title: "Support after dispatch",

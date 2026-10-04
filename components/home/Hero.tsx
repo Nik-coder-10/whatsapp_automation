@@ -58,8 +58,8 @@ export function Hero() {
               [
                 ["Pick equipment", "Browse the catalogue with clear, GST-exclusive pricing."],
                 ["Enter delivery pincode", "We check serviceability and freight before you pay."],
-                ["Pay on UPI", "Pay the owner directly; every payment is verified."],
-                ["Track on WhatsApp", "Order confirmation and status updates automatically."],
+              ["Pay on UPI", "Pay the owner directly; every payment is verified."],
+              ["Get GST invoice", "Proper billing with your GSTIN on every order."],
               ] as [string, string][]
             ).map(([title, desc], i) => (
               <li key={title} className="flex gap-3">

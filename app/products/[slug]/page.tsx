@@ -13,7 +13,6 @@ import {
   priceToPaise,
   slugifyCategory,
 } from "@/lib/catalog/products";
-import { getWhatsAppLink } from "@/lib/contact";
 import { siteConfig } from "@/config/site";
 
 export async function generateMetadata({
@@ -45,7 +44,7 @@ export async function generateStaticParams() {
 
 /**
  * Product detail: gallery, info, specs, quantity + cart interface,
- * WhatsApp enquiry, related items. Read-only — no checkout, payment
+ * sales enquiry, related items. Read-only — no checkout, payment
  * or delivery logic. Inactive/unknown slugs 404.
  */
 export default async function ProductPage({
@@ -70,9 +69,6 @@ export default async function ProductPage({
           },
         ];
   const specs = formatSpecEntries(product.specifications);
-  const enquiry = getWhatsAppLink(
-    `Hello Trolift Solutions, I want a quote for "${product.name}".`,
-  );
 
   // Structured data from DB fields only: no ratings, reviews, brand or
   // shipping claims. Availability mirrors live stock_quantity.
@@ -144,23 +140,12 @@ export default async function ProductPage({
             />
           </div>
           <div className="mt-3">
-            {enquiry ? (
-              <a
-                href={enquiry}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-12 w-full items-center justify-center rounded-md bg-green-600 px-6 text-base font-bold text-white hover:bg-green-500"
-              >
-                Enquire on WhatsApp
-              </a>
-            ) : (
-              <Link
-                href="/#contact"
-                className="inline-flex h-12 w-full items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
-              >
-                Contact sales
-              </Link>
-            )}
+            <Link
+              href="/#contact"
+              className="inline-flex h-12 w-full items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
+            >
+              Enquire about this product
+            </Link>
           </div>
         </div>
       </div>

@@ -15,8 +15,6 @@ import type {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
-  WhatsappDeliveryStatus,
-  WhatsappMessageType,
 } from "@/types";
 
 export type Json =
@@ -140,36 +138,6 @@ export interface PaymentRow {
   transaction_reference: string | null;
   /** Non-secret context only — never credentials. */
   metadata: Json;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WhatsappLeadRow {
-  id: string;
-  name: string | null;
-  phone: string;
-  email: string | null;
-  interested_product_id: string | null;
-  template_name: string | null;
-  message_body: string | null;
-  provider_message_id: string | null;
-  delivery_status: WhatsappDeliveryStatus;
-  error_info: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WhatsappMessageRow {
-  id: string;
-  customer_id: string | null;
-  order_id: string | null;
-  phone: string;
-  message_type: WhatsappMessageType;
-  template_name: string | null;
-  message_body: string | null;
-  provider_message_id: string | null;
-  status: WhatsappDeliveryStatus;
-  error_info: string | null;
   created_at: string;
   updated_at: string;
 }

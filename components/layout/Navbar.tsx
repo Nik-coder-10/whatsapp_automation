@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { siteConfig } from "@/config/site";
-import { getWhatsAppLink } from "@/lib/contact";
 
 const LINKS = [
   { label: "Home", href: "/" },
@@ -34,26 +33,11 @@ function BrandMark() {
   );
 }
 
-/** Quote CTA: WhatsApp deep link when configured, contact section otherwise. */
+/** Quote CTA: routes to the contact section for a sales quote. */
 function QuoteCta({ mobile = false }: { mobile?: boolean }) {
-  const wa = getWhatsAppLink(
-    "Hello Trolift Solutions, I want a quote for material-handling equipment.",
-  );
   const cls = mobile
     ? "flex h-11 items-center justify-center rounded-md px-4 text-sm font-bold"
     : "inline-flex h-10 items-center rounded-md px-4 text-sm font-bold";
-  if (wa) {
-    return (
-      <a
-        href={wa}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`${cls} bg-green-600 text-white hover:bg-green-500`}
-      >
-        WhatsApp Us
-      </a>
-    );
-  }
   return (
     <Link href="/#contact" className={`${cls} bg-amber-400 text-brand-950 hover:bg-amber-300`}>
       Get a Quote

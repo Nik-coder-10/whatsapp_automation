@@ -8,7 +8,8 @@
 | `0002_extensions_helpers.sql` | `pgcrypto`, `set_updated_at()` trigger fn, `order_number_seq` + `generate_order_number()` (`TRL-YYYY-NNNNNN`). |
 | `0003_identity_catalog.sql` | `profiles`, `customers`, `products`, `delivery_partners`, `delivery_pincode_rates` + indexes + `updated_at` triggers. |
 | `0004_orders.sql` | `orders` (auto order number, snapshot totals with `total = subtotal + delivery` CHECK), `order_items` (name/price/line-total snapshots, `line_total = qty × price` CHECK), `payments` (unique UTR where present). |
-| `0005_messaging.sql` | `whatsapp_leads`, `whatsapp_messages` (outbound-only log; no secrets in tables). |
+| `0005_messaging.sql` | Historical only — created `whatsapp_*` tables, removed again in `0009`. |
+| `0009_drop_whatsapp.sql` | Drops `whatsapp_leads` + `whatsapp_messages` (messaging out of scope). |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
@@ -22,8 +23,8 @@ a zero-padded global sequence, enforced by
 `orders_number_format_check`). UUIDs are the primary keys. The sequence
 is global (never reset daily) so concurrent checkouts cannot collide.
 
-No customer authentication exists yet by design: orders, payments and
-WhatsApp data are admin + service-role only. When customer accounts
+No customer authentication exists yet by design: orders and payments
+are admin + service-role only. When customer accounts
 arrive, link `customers` to `auth.users` and add own-order RLS
 policies — the `customer_id` FKs are already in place for that.
 
@@ -43,9 +44,9 @@ policies — the `customer_id` FKs are already in place for that.
   `delivery_partners`, all `delivery_pincode_rates` (storefront +
   serviceability checks need these).
 - `authenticated` + `profiles.is_admin`: full access everywhere.
-- Everything else (customers, orders, items, payments, WhatsApp):
-  admins + service-role key only. The service role bypasses RLS and is
-  used by server Route Handlers.
+- Everything else (customers, orders, items, payments): admins +
+  service-role key only. The service role bypasses RLS and is used by
+  server Route Handlers.
 - `profiles.is_admin` has no public write policy — flip only via the
   service-role key.
 
