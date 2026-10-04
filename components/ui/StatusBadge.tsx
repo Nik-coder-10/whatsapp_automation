@@ -4,9 +4,12 @@ import type { OrderStatus, PaymentStatus } from "@/types";
 const orderTones: Record<OrderStatus, "info" | "accent" | "success" | "neutral" | "danger"> = {
   draft: "neutral",
   pending_payment: "info",
+  payment_submitted: "accent",
   paid: "accent",
-  confirmed: "accent",
+  confirmed: "success",
+  processing: "info",
   shipped: "info",
+  dispatched: "info",
   delivered: "success",
   cancelled: "danger",
 };
@@ -14,24 +17,31 @@ const orderTones: Record<OrderStatus, "info" | "accent" | "success" | "neutral" 
 const orderLabels: Record<OrderStatus, string> = {
   draft: "Draft",
   pending_payment: "Payment pending",
+  payment_submitted: "Payment submitted",
   paid: "Paid",
   confirmed: "Confirmed",
+  processing: "Processing",
   shipped: "Shipped",
+  dispatched: "Dispatched",
   delivered: "Delivered",
   cancelled: "Cancelled",
 };
 
-const paymentTones: Record<PaymentStatus, "info" | "success" | "danger" | "neutral"> = {
+const paymentTones: Record<PaymentStatus, "info" | "success" | "danger" | "neutral" | "accent"> = {
   pending: "info",
-  verified: "success",
+  submitted: "accent",
+  paid: "success",
   failed: "danger",
+  cancelled: "neutral",
   refunded: "neutral",
 };
 
 const paymentLabels: Record<PaymentStatus, string> = {
   pending: "Pending",
-  verified: "Verified",
+  submitted: "Submitted",
+  paid: "Paid",
   failed: "Failed",
+  cancelled: "Cancelled",
   refunded: "Refunded",
 };
 

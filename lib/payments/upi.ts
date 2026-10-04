@@ -23,7 +23,12 @@ export function getOwnerUpi(): UpiPaymentInfo {
 }
 
 /** UPI deep-link for QR/intent (amount in rupees, VPA validated). */
-export function buildUpiIntent(info: UpiPaymentInfo, amountRupees: number, note: string): string {
+export function buildUpiIntent(
+  info: UpiPaymentInfo,
+  amountRupees: number,
+  note: string,
+  transactionRef?: string,
+): string {
   const params = new URLSearchParams({
     pa: info.payeeVpa,
     pn: info.payeeName,
@@ -31,5 +36,12 @@ export function buildUpiIntent(info: UpiPaymentInfo, amountRupees: number, note:
     cu: "INR",
     tn: note.slice(0, 80),
   });
+  if (transactionRef) params.set("tr", transactionRef.slice(0, 64));
   return `upi://pay?${params.toString()}`;
+}
+
+/** Payment window: how long an order stays payable (informational). */
+export function getPaymentWindowHours(): number {
+  const raw = Number(process.env.PAYMENT_WINDOW_HOURS ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 48;
 }

@@ -58,6 +58,7 @@ function Section({
  * API (with server-side repricing) and payment arrive in later phases.
  */
 interface PlacedOrder {
+  orderId: string;
   orderNumber: string;
   totalPaise: number;
   duplicate: boolean;
@@ -173,6 +174,7 @@ export function CheckoutForm() {
         }),
       });
       const json = (await res.json()) as ApiResponse<{
+        id: string;
         orderNumber: string;
         totalPaise: number;
         duplicate: boolean;
@@ -182,6 +184,7 @@ export function CheckoutForm() {
         return;
       }
       setPlaced({
+        orderId: json.data.id,
         orderNumber: json.data.orderNumber,
         totalPaise: json.data.totalPaise,
         duplicate: json.data.duplicate,
@@ -206,12 +209,19 @@ export function CheckoutForm() {
         <p className="mt-2 text-sm text-zinc-600">
           Total{" "}
           {formatMoney({ amountPaise: placed.totalPaise, currency: "INR" })} ·
-          payment pending — UPI payment arrives in the next phase.
+          payment pending — scan the UPI QR on the next step and submit
+          your reference.
         </p>
         <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
           <Link
-            href="/products"
+            href={`/orders/${placed.orderId}/pay`}
             className="inline-flex h-11 items-center justify-center rounded-md bg-brand-800 px-5 text-sm font-bold text-white hover:bg-brand-700"
+          >
+            Pay Now
+          </Link>
+          <Link
+            href="/products"
+            className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
           >
             Continue browsing
           </Link>

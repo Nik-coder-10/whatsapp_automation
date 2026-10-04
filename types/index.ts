@@ -9,13 +9,22 @@
 export type OrderStatus =
   | "draft"
   | "pending_payment"
+  | "payment_submitted"
   | "paid"
   | "confirmed"
+  | "processing"
   | "shipped"
+  | "dispatched"
   | "delivered"
   | "cancelled";
 
-export type PaymentStatus = "pending" | "verified" | "failed" | "refunded";
+export type PaymentStatus =
+  | "pending"
+  | "submitted"
+  | "paid"
+  | "failed"
+  | "cancelled"
+  | "refunded";
 
 export type PaymentMethod =
   | "upi"

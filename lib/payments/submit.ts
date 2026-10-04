@@ -1,0 +1,125 @@
+import "server-only";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { AppError } from "@/lib/api/errors";
+import {
+  assertClaimAllowed,
+  isValidPaymentReference,
+  normalizePaymentReference,
+} from "@/lib/payments/claims";
+import type { OrderStatus, PaymentStatus } from "@/types";
+
+/**
+ * Payment-claim persistence (server-only).
+ *
+ * Flow: load order + latest payment via service role → enforce
+ * transition rules → store the UTR (UNIQUE-guarded) → flip payment to
+ * SUBMITTED and order to PAYMENT_SUBMITTED atomically-ish in order
+ * (payment first would orphan on crash; order first is also imperfect —
+ * a small reconciliation window the admin dashboard resolves by
+ * matching on transaction_reference).
+ *
+ * Amounts are never accepted: the claim carries only the reference.
+ */
+
+export interface ClaimResult {
+  orderId: string;
+  orderNumber: string;
+  paymentStatus: PaymentStatus;
+  orderStatus: OrderStatus;
+}
+
+export async function submitPaymentClaim(input: {
+  orderId: string;
+  reference: string;
+}): Promise<ClaimResult> {
+  const reference = normalizePaymentReference(input.reference);
+  if (!isValidPaymentReference(input.reference)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "Enter the 6–30 character payment reference from your UPI app.",
+      422,
+    );
+  }
+  const admin = createAdminClient();
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select("id,order_number,payment_status,order_status")
+    .eq("id", input.orderId)
+    .maybeSingle();
+  const orderRow = order as unknown as {
+    id: string;
+    order_number: string;
+    payment_status: PaymentStatus;
+    order_status: OrderStatus;
+  } | null;
+  if (orderError || !orderRow) {
+    throw new AppError("NOT_FOUND", "Order not found.", 404);
+  }
+  assertClaimAllowed(orderRow.payment_status, orderRow.order_status);
+
+  const { data: payment, error: paymentError } = await admin
+    .from("payments")
+    .select("id,status")
+    .eq("order_id", orderRow.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const paymentRow = payment as unknown as {
+    id: string;
+    status: PaymentStatus;
+  } | null;
+  if (paymentError || !paymentRow) {
+    throw new AppError("NOT_FOUND", "No pending payment for this order.", 404);
+  }
+  assertClaimAllowed(paymentRow.status, orderRow.order_status);
+
+  const { error: refError } = await admin
+    .from("payments")
+    .update({ transaction_reference: reference })
+    .eq("id", paymentRow.id);
+  if (refError) {
+    // Duplicate UTR (partial unique index) lands here too.
+    throw new AppError(
+      "BAD_REQUEST",
+      "This payment reference was already used. Check the UTR and try again.",
+      409,
+    );
+  }
+  // Optimistic concurrency: zero updated rows means someone else moved
+  // the state first (Supabase reports that as success with empty data).
+  const payUpdate = await admin
+    .from("payments")
+    .update({ status: "submitted" })
+    .eq("id", paymentRow.id)
+    .eq("status", paymentRow.status)
+    .select("id");
+  const payRows = (payUpdate.data ?? []) as unknown as Array<{ id: string }>;
+  if (payUpdate.error || payRows.length === 0) {
+    throw new AppError(
+      "BAD_REQUEST",
+      "This payment changed state. Refresh and try again.",
+      409,
+    );
+  }
+  const orderUpdate = await admin
+    .from("orders")
+    .update({ order_status: "payment_submitted", payment_status: "submitted" })
+    .eq("id", orderRow.id)
+    .eq("order_status", orderRow.order_status)
+    .select("id");
+  const orderRows = (orderUpdate.data ?? []) as unknown as Array<{ id: string }>;
+  if (orderUpdate.error || orderRows.length === 0) {
+    throw new AppError(
+      "BAD_REQUEST",
+      "This order changed state. Refresh and try again.",
+      409,
+    );
+  }
+  return {
+    orderId: orderRow.id,
+    orderNumber: orderRow.order_number,
+    paymentStatus: "submitted",
+    orderStatus: "payment_submitted",
+  };
+}

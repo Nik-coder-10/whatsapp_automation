@@ -7,8 +7,8 @@ export default function NotFound() {
       <div className="flex flex-col items-start gap-3 py-10">
         <h1 className="text-xl font-bold text-zinc-900">Page not found.</h1>
         <p className="max-w-md text-sm text-zinc-500">
-          The page you are looking for does not exist (yet — the storefront
-          lands in the next phase).
+          The page you are looking for does not exist or may have been
+          moved. Check the link, or head back to browse the catalogue.
         </p>
         <Link
           href="/"

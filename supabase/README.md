@@ -11,6 +11,7 @@
 | `0005_messaging.sql` | Historical only — created `whatsapp_*` tables, removed again in `0009`. |
 | `0009_drop_whatsapp.sql` | Drops `whatsapp_leads` + `whatsapp_messages` (messaging out of scope). |
 | `0010_partner_priority.sql` | `delivery_partners.priority` (lower wins; default 100) + index for engine selection. |
+| `0012_payment_states.sql` | Payment lifecycle (`pending→submitted→paid/failed/cancelled/refunded`) + order states (`payment_submitted`, `processing`, `dispatched`). |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
