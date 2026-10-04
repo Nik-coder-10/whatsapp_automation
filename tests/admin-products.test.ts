@@ -1,0 +1,275 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createMockClient,
+  type MockResponder,
+} from "@/tests/helpers/supabase-mock";
+import { resetRateLimits } from "@/lib/rate-limit/index";
+
+vi.mock("server-only", () => ({}));
+// next/cache has no request store in unit tests; revalidation is a
+// production-runtime concern, so it is a no-op here.
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+
+let authUser: { id: string } | null = { id: "admin-1" };
+let adminFlag = true;
+let handler: MockResponder = () => {
+  throw new Error("unexpected query");
+};
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: () => createMockClient(handler, { authUser }),
+}));
+
+import {
+  normalizeSlug,
+  paiseToDecimal,
+  validateProductInput,
+  type ProductFormInput,
+} from "@/lib/admin/product-validation";
+import { POST as activePost } from "@/app/api/admin/products/[id]/active/route";
+import {
+  GET as detailGet,
+  PATCH as detailPatch,
+} from "@/app/api/admin/products/[id]/route";
+import { GET as listGet, POST as createPost } from "@/app/api/admin/products/route";
+import { isValidImageSrc, resolveProductImage } from "@/lib/storage/images";
+
+beforeEach(() => {
+  resetRateLimits();
+  authUser = { id: "admin-1" };
+  adminFlag = true;
+  handler = (op) => {
+    if (op.table === "profiles") {
+      return { rows: adminFlag ? [{ is_admin: true }] : [], error: null };
+    }
+    throw new Error(`unexpected table ${op.table}`);
+  };
+});
+
+const INPUT: ProductFormInput = {
+  name: "Test Trolley",
+  slug: "test-trolley",
+  description: "A test trolley.",
+  priceRupees: "6299.00",
+  category: "Trolleys",
+  images: ["/images/products/test.jpg"],
+  specificationsJson: '{"capacity_kg": 500}',
+  stockQuantity: 10,
+  isActive: true,
+};
+
+const routePost = (
+  fn: (
+    req: Request,
+    ctx?: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+  body: unknown,
+  params?: Record<string, string>,
+) =>
+  fn(
+    new Request("http://localhost/x", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    // Test-only: routes without dynamic segments ignore the context.
+    (params ? { params: Promise.resolve(params) } : undefined) as unknown as {
+      params: Promise<{ id: string }>;
+    },
+  );
+
+describe("validateProductInput", () => {
+  it("accepts a valid product and converts money exactly", () => {
+    const { errors, value } = validateProductInput(INPUT);
+    expect(errors).toEqual({});
+    expect(value?.pricePaise).toBe(629900);
+    expect(value?.slug).toBe("test-trolley");
+    expect(value?.specifications).toEqual({ capacity_kg: 500 });
+  });
+
+  it("rejects bad name, slug, price, category and stock", () => {
+    const { errors, value } = validateProductInput({
+      ...INPUT,
+      name: "x",
+      slug: "Bad Slug!!",
+      priceRupees: "12.999",
+      category: "",
+      stockQuantity: -1,
+    });
+    expect(value).toBeNull();
+    expect(errors.name).toBeTruthy();
+    // Slug normalises instead of failing when possible.
+    expect(errors.slug).toBeUndefined();
+    expect(errors.priceRupees).toContain("2 decimals");
+    expect(errors.category).toBeTruthy();
+    expect(errors.stockQuantity).toBeTruthy();
+  });
+
+  it("rejects non-object and broken JSON specs", () => {
+    expect(
+      validateProductInput({ ...INPUT, specificationsJson: "[1]" }).errors
+        .specificationsJson,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, specificationsJson: "{oops" }).errors
+        .specificationsJson,
+    ).toBeTruthy();
+  });
+
+  it("rejects bad image paths", () => {
+    expect(
+      validateProductInput({ ...INPUT, images: ["ftp://x/y.jpg"] }).errors.images,
+    ).toBeTruthy();
+  });
+
+  it("normalises slugs and converts paise back exactly", () => {
+    expect(normalizeSlug("Lifting & Stacking!")).toBe("lifting-and-stacking");
+    expect(paiseToDecimal(629900)).toBe("6299.00");
+  });
+});
+
+describe("image handling", () => {
+  it.each(["/images/products/a.jpg", "https://cdn.example/a.webp"])(
+    "accepts %s",
+    (s) => {
+      expect(isValidImageSrc(s)).toBe(true);
+    },
+  );
+  it.each(["ftp://x/a.jpg", "/images/../x.jpg", "notaurl", "/images/a.txt"])(
+    "rejects %s",
+    (s) => {
+      expect(isValidImageSrc(s)).toBe(false);
+    },
+  );
+  it("falls back to the placeholder", () => {
+    expect(resolveProductImage([])).toContain("placeholder");
+    expect(resolveProductImage(["/images/products/a.jpg"])).toBe(
+      "/images/products/a.jpg",
+    );
+  });
+});
+
+describe("admin product APIs", () => {
+  it("lists with safe projections", async () => {
+    handler = (op) => {
+      if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+      if (op.table === "products") {
+        return {
+          rows: [
+            {
+              id: "p1",
+              name: "T",
+              slug: "t",
+              category: "C",
+              price: "10.00",
+              stock_quantity: 1,
+              images: [],
+              is_active: true,
+              created_at: "2026-10-04T00:00:00Z",
+            },
+          ],
+          error: null,
+          count: 1,
+        };
+      }
+      throw new Error("unreachable");
+    };
+    const res = await listGet(new Request("http://localhost/api/admin/products"));
+    const json = (await res.json()) as {
+      ok: boolean;
+      data: { products: Array<Record<string, unknown>>; total: number };
+    };
+    expect(json.ok).toBe(true);
+    expect(json.data.total).toBe(1);
+    expect(json.data.products[0]).toMatchObject({
+      name: "T",
+      pricePaise: 1000,
+    });
+  });
+
+  it("creates products and maps duplicate slugs", async () => {
+    handler = (op) => {
+      if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+      if (op.table === "products") return { rows: [{ id: "new-1" }], error: null };
+      throw new Error("unreachable");
+    };
+    const res = await routePost(createPost, INPUT);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+
+    handler = (op) => {
+      if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+      if (op.table === "products") {
+        return { rows: [], error: { message: "duplicate", code: "23505" } };
+      }
+      throw new Error("unreachable");
+    };
+    const dup = await routePost(createPost, INPUT);
+    const json = (await dup.json()) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+    expect(json.ok).toBe(false);
+    expect(json.error.message).toContain("slug");
+  });
+
+  it("rejects invalid prices and unauthorized callers", async () => {
+    handler = (op) => {
+      if (op.table === "profiles") {
+        return {
+          rows: adminFlag ? [{ is_admin: true }] : [],
+          error: null,
+        };
+      }
+      throw new Error("must not reach the database");
+    };
+    const bad = await routePost(createPost, { ...INPUT, priceRupees: "-5" });
+    expect(bad.status).toBe(422);
+
+    authUser = null;
+    const anon = await routePost(createPost, INPUT);
+    expect(anon.status).toBe(401);
+
+    authUser = { id: "u1" };
+    adminFlag = false;
+    const nonAdmin = await routePost(createPost, INPUT);
+    expect(nonAdmin.status).toBe(403);
+  });
+
+  it("toggles active state", async () => {
+    handler = (op) => {
+      if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+      if (op.table === "products") return { rows: [{ id: "p1" }], error: null };
+      throw new Error("unreachable");
+    };
+    const res = await activePost(
+      new Request("http://localhost/x", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false }),
+      }),
+      { params: Promise.resolve({ id: "p1" }) },
+    );
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("patches products and 404s on missing rows", async () => {
+    handler = (op) => {
+      if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+      if (op.table === "products") return { rows: [], error: null };
+      throw new Error("unreachable");
+    };
+    const res = await detailPatch(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(INPUT),
+      }),
+      { params: Promise.resolve({ id: "missing" }) },
+    );
+    expect(res.status).toBe(404);
+    const detail = await detailGet(
+      new Request("http://localhost/x"),
+      { params: Promise.resolve({ id: "missing" }) },
+    );
+    expect(detail.status).toBe(404);
+  });
+});

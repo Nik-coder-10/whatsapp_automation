@@ -1,0 +1,138 @@
+import { validateImageList } from "@/lib/storage/images";
+import type { Json } from "@/types/database";
+
+/**
+ * Admin product input validation (pure, unit-tested).
+ * Money arrives as a rupees decimal string and converts to integer
+ * paise exactly (≤2dp input enforced); the database receives a
+ * NUMERIC(12,2) decimal string — floats never cross the boundary.
+ */
+
+export interface ProductFormInput {
+  name: string;
+  slug: string;
+  description: string;
+  priceRupees: string;
+  category: string;
+  images: string[];
+  specificationsJson: string;
+  stockQuantity: number;
+  isActive: boolean;
+}
+
+export type ProductField =
+  | "name"
+  | "slug"
+  | "description"
+  | "priceRupees"
+  | "category"
+  | "images"
+  | "specificationsJson"
+  | "stockQuantity";
+
+export type ProductFormErrors = Partial<Record<ProductField, string>>;
+
+export interface ValidProduct {
+  name: string;
+  slug: string;
+  description: string;
+  /** Integer paise. */
+  pricePaise: number;
+  category: string;
+  images: string[];
+  specifications: Json;
+  stockQuantity: number;
+  isActive: boolean;
+}
+
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PRICE_RE = /^\d+(?:\.\d{1,2})?$/;
+
+export function normalizeSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+export function validateProductInput(
+  input: ProductFormInput,
+): { errors: ProductFormErrors; value: ValidProduct | null } {
+  const errors: ProductFormErrors = {};
+
+  const name = input.name.trim();
+  if (name.length < 2 || name.length > 200) {
+    errors.name = "Name must be 2–200 characters.";
+  }
+  const slug = normalizeSlug(input.slug);
+  if (!SLUG_RE.test(slug)) {
+    errors.slug = "Slug must be lowercase letters, numbers and dashes.";
+  }
+  if (input.description.length > 5000) {
+    errors.description = "Description must be under 5000 characters.";
+  }
+  const priceRaw = input.priceRupees.trim();
+  if (!PRICE_RE.test(priceRaw)) {
+    errors.priceRupees = "Price must be a non-negative amount with at most 2 decimals.";
+  }
+  const pricePaise = PRICE_RE.test(priceRaw)
+    ? Math.round(Number(priceRaw) * 100)
+    : NaN;
+  if (!Number.isSafeInteger(pricePaise) || pricePaise < 0) {
+    errors.priceRupees = "Price must be a non-negative amount with at most 2 decimals.";
+  }
+  const category = input.category.trim();
+  if (category.length < 2 || category.length > 100) {
+    errors.category = "Category must be 2–100 characters.";
+  }
+  const images = input.images.map((s) => s.trim()).filter((s) => s !== "");
+  const imageError = validateImageList(images);
+  if (imageError) errors.images = imageError;
+
+  let specifications: Json = {};
+  if (input.specificationsJson.trim() !== "") {
+    try {
+      const parsed: unknown = JSON.parse(input.specificationsJson);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        errors.specificationsJson = "Specifications must be a JSON object.";
+      } else {
+        specifications = parsed as Json;
+      }
+    } catch {
+      errors.specificationsJson = "Specifications must be valid JSON.";
+    }
+  }
+
+  if (
+    !Number.isInteger(input.stockQuantity) ||
+    input.stockQuantity < 0 ||
+    input.stockQuantity > 1_000_000
+  ) {
+    errors.stockQuantity = "Stock must be a whole number from 0 to 1,000,000.";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors, value: null };
+  }
+  return {
+    errors,
+    value: {
+      name,
+      slug,
+      description: input.description,
+      pricePaise,
+      category,
+      images,
+      specifications,
+      stockQuantity: input.stockQuantity,
+      isActive: input.isActive,
+    },
+  };
+}
+
+/** NUMERIC(12,2) decimal string for the database. */
+export function paiseToDecimal(paise: number): string {
+  return (paise / 100).toFixed(2);
+}
