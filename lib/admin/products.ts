@@ -8,6 +8,11 @@ import {
   validateProductInput,
   type ProductFormInput,
 } from "@/lib/admin/product-validation";
+import {
+  fetchAvailability,
+  stockStatus,
+  type StockStatus,
+} from "@/lib/inventory/availability";
 import type { ProductRow } from "@/types/database";
 
 /**
@@ -68,6 +73,10 @@ export interface AdminProductListItem {
   category: string;
   pricePaise: number;
   stockQuantity: number;
+  lowStockThreshold: number;
+  /** Reserve-aware units available (on-hand minus live holds). */
+  available: number;
+  availability: StockStatus;
   imageCount: number;
   firstImage: string;
   isActive: boolean;
@@ -75,7 +84,8 @@ export interface AdminProductListItem {
 }
 
 const LIST_COLUMNS =
-  "id,name,slug,category,price,stock_quantity,images,is_active,created_at";
+  "id,name,slug,category,price,stock_quantity,low_stock_threshold," +
+  "images,is_active,created_at";
 
 type AdminClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -118,27 +128,94 @@ export async function listAdminProducts(query: AdminProductQuery): Promise<{
     throw new AppError("INTERNAL_ERROR", "Could not load products.", 500);
   }
   const rows = (data ?? []) as unknown as Array<
-    Pick<ProductRow, "id" | "name" | "slug" | "category" | "price" | "stock_quantity" | "is_active" | "created_at"> & {
+    Pick<ProductRow, "id" | "name" | "slug" | "category" | "price" | "stock_quantity" | "low_stock_threshold" | "is_active" | "created_at"> & {
       images: string[];
     }
   >;
+  const availability = await fetchAvailability(
+    client,
+    rows.map((r) => r.id),
+  );
   const total = count ?? 0;
   return {
-    products: rows.map((r) => ({
+    products: rows.map((r) => {
+      const a = availability?.get(r.id);
+      return {
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        category: r.category,
+        pricePaise: Math.round(Number(r.price) * 100),
+        stockQuantity: r.stock_quantity,
+        lowStockThreshold: r.low_stock_threshold,
+        available: a?.available ?? r.stock_quantity,
+        availability:
+          a?.status ?? stockStatus(r.stock_quantity, r.low_stock_threshold),
+        imageCount: r.images.length,
+        firstImage: resolveProductImage(r.images),
+        isActive: r.is_active,
+        createdAt: r.created_at,
+      };
+    }),
+    total,
+    page: query.page,
+    totalPages: total === 0 ? 0 : Math.ceil(total / query.pageSize),
+  };
+}
+
+/**
+ * Restock radar: every product that is out of stock or at/below its
+ * threshold, with reserve-aware availability. The catalogue is small
+ * (single-digit products), so one narrow pull is cheaper and more
+ * honest than paginated SQL filters over computed availability.
+ */
+export async function listInventoryAlerts(): Promise<{
+  outOfStock: AdminProductListItem[];
+  lowStock: AdminProductListItem[];
+}> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("products")
+    .select(
+      "id,name,slug,category,price,stock_quantity,low_stock_threshold," +
+        "images,is_active,created_at",
+    )
+    .order("stock_quantity", { ascending: true });
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not load inventory.", 500);
+  }
+  const rows = (data ?? []) as unknown as Array<
+    Pick<ProductRow, "id" | "name" | "slug" | "category" | "price" | "stock_quantity" | "low_stock_threshold" | "is_active" | "created_at"> & {
+      images: string[];
+    }
+  >;
+  const availability = await fetchAvailability(
+    client,
+    rows.map((r) => r.id),
+  );
+  const items: AdminProductListItem[] = rows.map((r) => {
+    const a = availability?.get(r.id);
+    return {
       id: r.id,
       name: r.name,
       slug: r.slug,
       category: r.category,
       pricePaise: Math.round(Number(r.price) * 100),
       stockQuantity: r.stock_quantity,
+      lowStockThreshold: r.low_stock_threshold,
+      available: a?.available ?? r.stock_quantity,
+      availability:
+        a?.status ?? stockStatus(r.stock_quantity, r.low_stock_threshold),
       imageCount: r.images.length,
       firstImage: resolveProductImage(r.images),
       isActive: r.is_active,
       createdAt: r.created_at,
-    })),
-    total,
-    page: query.page,
-    totalPages: total === 0 ? 0 : Math.ceil(total / query.pageSize),
+    };
+  });
+  return {
+    outOfStock: items.filter((p) => p.availability === "out_of_stock"),
+    lowStock: items.filter((p) => p.availability === "low_stock"),
   };
 }
 
@@ -173,7 +250,8 @@ export async function getAdminProduct(
   const { data, error } = await client
     .from("products")
     .select(
-      "id,name,slug,description,category,price,gst_rate,stock_quantity,images," +
+      "id,name,slug,description,category,price,gst_rate,stock_quantity," +
+        "low_stock_threshold,images," +
         "specifications,is_active,created_at,updated_at",
     )
     .eq("id", productId)
@@ -183,6 +261,8 @@ export async function getAdminProduct(
   }
   const r = data as unknown as (ProductRow & { images: string[] }) | null;
   if (!r) return null;
+  const availability = await fetchAvailability(client, [r.id]);
+  const a = availability?.get(r.id);
   return {
     id: r.id,
     name: r.name,
@@ -192,6 +272,10 @@ export async function getAdminProduct(
     pricePaise: Math.round(Number(r.price) * 100),
     gstRate: r.gst_rate,
     stockQuantity: r.stock_quantity,
+    lowStockThreshold: r.low_stock_threshold,
+    available: a?.available ?? r.stock_quantity,
+    availability:
+      a?.status ?? stockStatus(r.stock_quantity, r.low_stock_threshold),
     images: r.images,
     firstImage: resolveProductImage(r.images),
     imageCount: r.images.length,
@@ -227,9 +311,23 @@ async function writeProduct(
     price: paiseToDecimal(value.pricePaise),
     gst_rate: value.gstRate,
     stock_quantity: value.stockQuantity,
+    low_stock_threshold: value.lowStockThreshold,
     images: value.images,
     is_active: value.isActive,
   };
+  // Manual stock movements are audit-logged with signed deltas so
+  // discrepancies stay debuggable. Threshold edits are policy, not
+  // movement — no event.
+  let previousStock: number | null = null;
+  if (productId) {
+    const { data: prev } = await client
+      .from("products")
+      .select("stock_quantity")
+      .eq("id", productId)
+      .maybeSingle();
+    previousStock = (prev as unknown as { stock_quantity: number } | null)
+      ?.stock_quantity ?? null;
+  }
   if (!productId) {
     const { data, error } = await client
       .from("products")
@@ -260,6 +358,19 @@ async function writeProduct(
   const updated = (data ?? []) as unknown as Array<{ id: string }>;
   if (updated.length === 0) {
     throw new AppError("NOT_FOUND", "Product not found.", 404);
+  }
+  if (previousStock !== null && previousStock !== value.stockQuantity) {
+    const { error: eventError } = await client.from("inventory_events").insert({
+      product_id: productId,
+      order_id: null,
+      event: "adjusted",
+      quantity: value.stockQuantity - previousStock,
+      balance_after: value.stockQuantity,
+      note: "manual stock adjustment",
+    });
+    if (eventError) {
+      console.error("[admin] inventory event log failed:", eventError.message);
+    }
   }
   return productId;
 }

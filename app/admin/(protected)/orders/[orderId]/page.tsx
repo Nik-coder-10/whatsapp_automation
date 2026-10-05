@@ -52,6 +52,9 @@ export default async function AdminOrderPage({
             </h1>
             <OrderStatusBadge status={order.orderStatus} />
             <PaymentStatusBadge status={order.paymentStatus} />
+            <span className="inline-flex items-center rounded-md border border-zinc-300 bg-zinc-50 px-2.5 py-1 text-xs font-bold text-zinc-600" title="Inventory position: reserved (held), consumed (sold), restored (returned), none (pre-inventory)">
+              Stock: {order.stockState}
+            </span>
             {order.paymentStatus === "paid" ? (
               <span className="flex flex-wrap gap-2">
                 <a

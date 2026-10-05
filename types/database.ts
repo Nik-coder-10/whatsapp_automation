@@ -55,6 +55,8 @@ export interface ProductRow {
   /** GST percent as decimal string (NUMERIC(5,2)); NULL = not configured. */
   gst_rate: string | null;
   stock_quantity: number;
+  /** Low-stock threshold (units); availability status derives from it. */
+  low_stock_threshold: number;
   images: string[];
   is_active: boolean;
   created_at: string;

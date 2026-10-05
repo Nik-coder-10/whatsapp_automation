@@ -8,6 +8,11 @@
  * the same CatalogProduct type either way.
  */
 import type { Json, ProductRow } from "@/types/database";
+import {
+  DEFAULT_LOW_STOCK_THRESHOLD,
+  stockStatus,
+  type StockStatus,
+} from "@/lib/inventory/availability";
 
 export type CatalogProduct = Pick<
   ProductRow,
@@ -21,7 +26,14 @@ export type CatalogProduct = Pick<
   | "stock_quantity"
   | "images"
   | "is_active"
->;
+> & {
+  /** Reserve-aware storefront status (never an exact count). Live rows
+   * carry it from product_availability(); static fallback rows compute
+   * it from on-hand stock (no holds visible offline). */
+  availability: StockStatus;
+  /** Per-product low-stock threshold when known (live rows). */
+  low_stock_threshold?: number;
+};
 
 export interface ProductCategory {
   slug: string;
@@ -50,7 +62,7 @@ export const PRODUCT_CATEGORIES: ProductCategory[] = [
 ];
 
 /** All seed products (dev-data fallback). Prices are NUMERIC decimal strings. */
-export const ALL_PRODUCTS: CatalogProduct[] = [
+const RAW_PRODUCTS: Array<Omit<CatalogProduct, "availability">> = [
   {
     id: "b1c2d3e4-0001-4000-8000-000000000001",
     name: "Hydraulic Hand Pallet Truck 2500 kg",
@@ -156,6 +168,19 @@ export const ALL_PRODUCTS: CatalogProduct[] = [
     is_active: true,
   },
 ];
+
+/**
+ * Static rows with storefront availability resolved from on-hand stock
+ * (no reservation holds are visible offline — the live path in
+ * queries.ts always wins when Supabase is reachable).
+ */
+export const ALL_PRODUCTS: CatalogProduct[] = RAW_PRODUCTS.map((p) => ({
+  ...p,
+  availability: stockStatus(
+    p.stock_quantity,
+    p.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD,
+  ),
+}));
 
 const FEATURED_IDS = new Set([
   "b1c2d3e4-0001-4000-8000-000000000001",

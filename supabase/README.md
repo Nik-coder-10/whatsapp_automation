@@ -18,6 +18,7 @@
 | `0015_customer_aggregates.sql` | `get_admin_customers()` + `get_admin_customer()` aggregate RPCs (repeat-buyer signals). |
 | `0016_gst_billing.sql` | B2B GST: `products.gst_rate`, customer billing master, order billing + tax snapshots, per-line tax, widened total CHECK, `create_order()` replacement. |
 | `0017_invoices.sql` | Invoices: order-time customer snapshots (backfilled, then NOT NULL), `invoices` frozen records (UNIQUE number + freeze trigger), `INV/FY/SEQ` numbering (`invoice_financial_year()` + sequence), `create_order()` replacement. |
+| `0018_inventory.sql` | Inventory: `products.low_stock_threshold`, `orders.stock_state` gate, `stock_reservations` holds (TTL + sweep), `inventory_events` audit, `product_availability()` RPC, reserve-in-`create_order()`, `consume_`/`restore_reservation()` RPCs, `search_products()` threshold column. |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
@@ -47,6 +48,25 @@ policies — the `customer_id` FKs are already in place for that.
   (zeros for pre-GST/non-GST rows) and `line_total = quantity * unit_price`,
   so history cannot drift when catalogue prices or rates change.
 - Catalogue prices are GST-exclusive; `products.gst_rate` NULL means 0%.
+
+## Inventory policy (enforced in 0018, not just app code)
+
+- `stock_quantity` is on-hand units (admin-managed, never negative).
+  Sellable units = on-hand minus live `stock_reservations` holds.
+- RESERVE at order creation (atomic, inside `create_order()`): holds
+  expire after the payment window (`p_reservation_hours`, default 48);
+  every order attempt sweeps expired holds first — no scheduler, and
+  abandoned carts never strand stock.
+- CONSUME at payment verification (`consume_reservation()`): holds turn
+  into real decrements only when money is verified. Idempotent.
+- RESTORE on cancellation (`restore_reservation()`): held units are
+  released, consumed units returned — exactly once via
+  `orders.stock_state` (`none`/`reserved`/`consumed`/`restored`).
+- Storefront shows status only (in/low/out of stock, threshold-based);
+  counts are re-checked server-side at order time, where races fail
+  safe with the item named instead of overselling.
+- Every movement lands in `inventory_events` (signed on-hand delta +
+  resulting balance) for debugging.
 
 ## Access model (RLS)
 

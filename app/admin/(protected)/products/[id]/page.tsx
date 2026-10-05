@@ -74,6 +74,16 @@ export default async function AdminProductPage({
                   "not configured (0%)"
                 )}
               </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Stock:{" "}
+                <span className="font-semibold text-zinc-800">
+                  {product.available} sellable
+                </span>{" "}
+                of {product.stockQuantity} on hand · low-stock at ≤{" "}
+                {product.lowStockThreshold}
+                {product.availability === "out_of_stock" ? " · out of stock" : ""}
+                {product.availability === "low_stock" ? " · low stock" : ""}
+              </p>
             </div>
             {product.isActive ? (
               <Badge tone="success">Active</Badge>
@@ -98,6 +108,7 @@ export default async function AdminProductPage({
                 images: product.images,
                 specificationsJson: JSON.stringify(product.specifications, null, 2),
                 stockQuantity: product.stockQuantity,
+                lowStockThreshold: product.lowStockThreshold,
                 isActive: product.isActive,
                 gstRate: product.gstRate ?? "",
               }}

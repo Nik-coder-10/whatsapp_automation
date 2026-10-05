@@ -54,6 +54,7 @@ const INPUT: ProductFormInput = {
   images: ["/images/products/test.jpg"],
   specificationsJson: '{"capacity_kg": 500}',
   stockQuantity: 10,
+  lowStockThreshold: 2,
   isActive: true,
   gstRate: "18",
 };
@@ -120,6 +121,21 @@ describe("validateProductInput", () => {
     expect(errors.priceRupees).toContain("2 decimals");
     expect(errors.category).toBeTruthy();
     expect(errors.stockQuantity).toBeTruthy();
+  });
+
+  it("validates the low-stock threshold alongside stock", () => {
+    expect(validateProductInput(INPUT).value?.lowStockThreshold).toBe(2);
+    expect(
+      validateProductInput({ ...INPUT, lowStockThreshold: -1 }).errors
+        .lowStockThreshold,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, lowStockThreshold: 1.5 }).errors
+        .lowStockThreshold,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, lowStockThreshold: 0 }).errors,
+    ).toEqual({});
   });
 
   it("rejects non-object and broken JSON specs", () => {

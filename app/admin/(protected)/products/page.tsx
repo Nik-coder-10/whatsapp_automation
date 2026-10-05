@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/States";
 import {
   listAdminProducts,
   listAdminCategories,
+  listInventoryAlerts,
   parseAdminProductQuery,
 } from "@/lib/admin/products";
 import { formatMoney } from "@/lib/orders/pricing";
@@ -36,9 +37,10 @@ export default async function AdminProductsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = parseAdminProductQuery(await searchParams);
-  const [result, categories] = await Promise.all([
+  const [result, categories, alerts] = await Promise.all([
     listAdminProducts(query).catch(() => null),
     listAdminCategories().catch((): string[] => []),
+    listInventoryAlerts().catch(() => null),
   ]);
 
   const base: Record<string, string | undefined> = {
@@ -143,6 +145,41 @@ export default async function AdminProductsPage({
         </div>
       </form>
 
+      {alerts && (alerts.outOfStock.length > 0 || alerts.lowStock.length > 0) ? (
+        <section aria-label="Inventory alerts" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 sm:p-5">
+          <h2 className="text-base font-bold text-zinc-900">Needs restocking</h2>
+          <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+            {alerts.outOfStock.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2">
+                <Link href={`/admin/products/${p.id}`} className="font-bold text-zinc-900 hover:text-brand-700 hover:underline">
+                  {p.name}
+                </Link>
+                <span>
+                  <Badge tone="danger">Out of stock</Badge>{" "}
+                  <span className="text-xs text-zinc-500">on hand {p.stockQuantity}</span>
+                </span>
+              </li>
+            ))}
+            {alerts.lowStock.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2">
+                <Link href={`/admin/products/${p.id}`} className="font-bold text-zinc-900 hover:text-brand-700 hover:underline">
+                  {p.name}
+                </Link>
+                <span>
+                  <Badge tone="warning">Low stock</Badge>{" "}
+                  <span className="text-xs text-zinc-500">
+                    {p.available} sellable of {p.stockQuantity} on hand (threshold {p.lowStockThreshold})
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-zinc-500">
+            Sellable = on hand minus live order holds (reserve-aware).
+          </p>
+        </section>
+      ) : null}
+
       <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
         {!result ? (
           <div role="alert">
@@ -194,7 +231,15 @@ export default async function AdminProductsPage({
                       <td className="py-2.5 pr-3 font-semibold whitespace-nowrap text-zinc-900">
                         {formatMoney({ amountPaise: p.pricePaise, currency: "INR" })}
                       </td>
-                      <td className="py-2.5 pr-3 text-zinc-700">{p.stockQuantity}</td>
+                      <td className="py-2.5 pr-3 text-zinc-700">
+                        <span className="font-semibold text-zinc-900">{p.available}</span>
+                        <span className="text-zinc-400"> / {p.stockQuantity}</span>
+                        {p.availability === "out_of_stock" ? (
+                          <span className="ml-2"><Badge tone="danger">Out</Badge></span>
+                        ) : p.availability === "low_stock" ? (
+                          <span className="ml-2"><Badge tone="warning">Low</Badge></span>
+                        ) : null}
+                      </td>
                       <td className="py-2.5 pr-3">
                         {p.isActive ? (
                           <Badge tone="success">Active</Badge>

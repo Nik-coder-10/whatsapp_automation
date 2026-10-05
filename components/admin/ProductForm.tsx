@@ -139,6 +139,17 @@ export function ProductForm({
           value={String(form.stockQuantity)}
           onChange={(e) => set("stockQuantity", Number(e.target.value))}
           error={errors.stockQuantity}
+          hint="On-hand units. Manual changes are audit-logged."
+        />
+        <Input
+          label="Low-stock threshold"
+          name="lowStockThreshold"
+          type="number"
+          min={0}
+          value={String(form.lowStockThreshold)}
+          onChange={(e) => set("lowStockThreshold", Number(e.target.value))}
+          error={errors.lowStockThreshold}
+          hint="At or below this, the storefront shows “Low stock”."
         />
       </div>
       <Input

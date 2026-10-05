@@ -230,6 +230,8 @@ export interface AdminOrderDetail {
   cgstPaise: number;
   sgstPaise: number;
   igstPaise: number;
+  /** Inventory position: none (pre-inventory) / reserved / consumed / restored. */
+  stockState: string;
   deliveryChargePaise: number;
   totalPaise: number;
   deliveryPincode: string;
@@ -260,7 +262,7 @@ export async function getAdminOrderDetail(
         "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
         "billing_name,billing_address_line,billing_city,billing_state," +
         "billing_state_code,billing_pincode," +
-        "payment_status,order_status,customer_id," +
+        "payment_status,order_status,stock_state,customer_id," +
         "customers!inner(name,phone,email,gstin)",
     )
     .eq("id", orderId)
@@ -288,6 +290,7 @@ export async function getAdminOrderDetail(
     billing_pincode: string | null;
     payment_status: PaymentStatus;
     order_status: OrderStatus;
+    stock_state: string;
     customers: { name: string; phone: string; email: string | null; gstin: string | null } | null;
   } | null;
   if (error || !o) return null;
@@ -369,6 +372,7 @@ export async function getAdminOrderDetail(
     deliveryPartnerName: o.delivery_partner_name,
     paymentStatus: o.payment_status,
     orderStatus: o.order_status,
+    stockState: o.stock_state,
     paymentReference: payRow?.transaction_reference ?? null,
     paymentUpdatedAt: payRow?.updated_at ?? null,
     events: eventRows.map((e) => ({
@@ -469,6 +473,19 @@ export async function verifyPaymentClaim(
   if (!canTransition(row.order_status, targetOrder)) {
     throw new AppError("BAD_REQUEST", "Order cannot move to the target state.", 409);
   }
+  if (decision === "approve") {
+    // Money is verified: convert this order's holds into real decrements
+    // BEFORE the status moves. Idempotent (reserved→consumed only), so a
+    // retry after a crashed approve safely converges instead of
+    // double-selling. A shortfall here means an admin reduced on-hand
+    // stock below live holds — the approval must stop, holds intact.
+    const { error: consumeError } = await client.rpc("consume_reservation", {
+      p_order_id: row.id,
+    });
+    if (consumeError) {
+      throw mapStockError(consumeError, "Stock cannot cover this order.");
+    }
+  }
   const payOk = await guardedUpdate(
     client, "payments", pay.id, { status: targetPayment }, "status", pay.status,
   );
@@ -497,6 +514,29 @@ export async function verifyPaymentClaim(
   return { paymentStatus: targetPayment, orderStatus: targetOrder };
 }
 
+/**
+ * Map a stock-RPC failure to an operator-safe error. Shortfalls are
+ * 409s naming the problem; anything else is a 500 (logged by the
+ * route boundary, never leaked).
+ */
+function mapStockError(error: unknown, fallback: string): AppError {
+  if (
+    typeof error === "object" && error !== null &&
+    (error as { code?: string }).code === "P0001" &&
+    typeof (error as { message?: string }).message === "string" &&
+    (error as { message: string }).message.includes("INSUFFICIENT_STOCK:")
+  ) {
+    return new AppError(
+      "INSUFFICIENT_STOCK",
+      (error as { message: string }).message
+        .replace("INSUFFICIENT_STOCK:", "")
+        .trim() || fallback,
+      409,
+    );
+  }
+  return new AppError("INTERNAL_ERROR", "Stock update failed. Try again.", 500);
+}
+
 /** Advance (or cancel) an order through valid transitions only. */
 export async function transitionOrderStatus(
   orderId: string,
@@ -509,6 +549,19 @@ export async function transitionOrderStatus(
       `Cannot move order from ${row.order_status} to ${toStatus}.`,
       409,
     );
+  }
+  if (toStatus === "cancelled") {
+    // Restore BEFORE the status moves: held units are released (or sold
+    // units returned) exactly once via the stock_state gate, so a crash
+    // between restore and status update retries cleanly instead of
+    // restoring twice.
+    const { error: restoreError } = await client.rpc("restore_reservation", {
+      p_order_id: row.id,
+      p_reason: `order cancelled from ${row.order_status}`,
+    });
+    if (restoreError) {
+      throw mapStockError(restoreError, "Stock could not be restored.");
+    }
   }
   const ok = await guardedUpdate(
     client, "orders", row.id, { order_status: toStatus }, "order_status", row.order_status,

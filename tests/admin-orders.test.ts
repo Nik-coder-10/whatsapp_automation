@@ -127,6 +127,11 @@ describe("admin authorization", () => {
 function wireOrderFlow() {
   handler = (op) => {
     if (op.table === "profiles") return { rows: [{ is_admin: true }], error: null };
+    // Stock movements converge inside their RPCs (mocked as success here;
+    // dedicated inventory tests drive shortfall/idempotency paths).
+    if (op.rpc === "consume_reservation" || op.rpc === "restore_reservation") {
+      return { rows: ["consumed"], error: null };
+    }
     if (op.table === "orders" && !op.updateValues) {
       return { rows: [{ ...ORDER }], error: null };
     }

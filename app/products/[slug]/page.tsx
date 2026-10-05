@@ -71,7 +71,7 @@ export default async function ProductPage({
   const specs = formatSpecEntries(product.specifications);
 
   // Structured data from DB fields only: no ratings, reviews, brand or
-  // shipping claims. Availability mirrors live stock_quantity.
+  // shipping claims. Availability mirrors the reserve-aware status.
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -84,9 +84,11 @@ export default async function ProductPage({
       price: product.price,
       priceCurrency: "INR",
       availability:
-        product.stock_quantity > 0
-          ? "https://schema.org/InStock"
-          : "https://schema.org/OutOfStock",
+        product.availability === "out_of_stock"
+          ? "https://schema.org/OutOfStock"
+          : product.availability === "low_stock"
+            ? "https://schema.org/LimitedAvailability"
+            : "https://schema.org/InStock",
       url: `${siteConfig.url}/products/${product.slug}`,
     },
   };
@@ -118,7 +120,7 @@ export default async function ProductPage({
             {product.name}
           </h1>
           <div className="mt-2">
-            <StockBadge quantity={product.stock_quantity} />
+            <StockBadge status={product.availability} />
           </div>
           <p className="mt-3 text-sm leading-6 text-zinc-600">{product.description}</p>
           <div className="mt-4 border-y border-zinc-200 py-4">
@@ -133,6 +135,7 @@ export default async function ProductPage({
           </div>
           <div className="mt-4">
             <BuyBox
+              availability={product.availability}
               product={{
                 productId: product.id,
                 slug: product.slug,

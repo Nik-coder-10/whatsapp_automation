@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AppError } from "@/lib/api/errors";
+import { getPaymentWindowHours } from "@/lib/payments/upi";
 import type { OrderQuote } from "@/lib/orders/quote";
 
 /**
@@ -9,7 +10,9 @@ import type { OrderQuote } from "@/lib/orders/quote";
  * Snapshots come exclusively from a server-computed OrderQuote — this
  * module accepts no money from callers. Concurrent double-submits with
  * the same idempotency key resolve to the existing order via the
- * UNIQUE constraint (23505 → fetch-and-return).
+ * UNIQUE constraint (23505 → fetch-and-return). Stock is RESERVED (not
+ * sold) inside the same atomic call with the payment-window TTL;
+ * verification consumes it, cancellation restores it.
  */
 
 export interface PersistedOrder {
@@ -76,11 +79,32 @@ export async function persistOrder(input: {
       amount: toRupees(quote.totalPaise),
       method: "upi",
     },
+    // Reservation TTL tracks the payment window: holds outlive the
+    // customer's chance to pay, and not a day longer.
+    p_reservation_hours: getPaymentWindowHours(),
   };
 
   const { data, error } = await admin.rpc("create_order", payload);
   if (!error) {
     return { orderId: data as unknown as string, duplicate: false };
+  }
+  // Atomic shortfall: another buyer won the race between quote and
+  // reserve. Surface 422 naming the item — never a generic 500.
+  if (
+    typeof error === "object" && error !== null &&
+    (error as { code?: string }).code === "P0001" &&
+    typeof (error as { message?: string }).message === "string" &&
+    ((error as { message: string }).message.includes("INSUFFICIENT_STOCK:")
+    )
+  ) {
+    const detail = (error as { message: string }).message
+      .replace("INSUFFICIENT_STOCK:", "")
+      .trim();
+    throw new AppError(
+      "INSUFFICIENT_STOCK",
+      detail !== "" ? detail : "Not enough stock for one of the items.",
+      422,
+    );
   }
   // Concurrent race: another request won with the same key.
   if ((error as { code?: string }).code === "23505") {

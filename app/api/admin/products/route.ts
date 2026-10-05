@@ -64,6 +64,10 @@ export function coerceProductInput(body: unknown): ProductFormInput {
     images,
     specificationsJson: String(r["specificationsJson"] ?? ""),
     stockQuantity: typeof stock === "number" ? stock : Number(stock ?? NaN),
+    lowStockThreshold:
+      typeof r["lowStockThreshold"] === "number"
+        ? r["lowStockThreshold"]
+        : Number(r["lowStockThreshold"] ?? NaN),
     isActive: r["isActive"] !== false,
     gstRate: String(r["gstRate"] ?? ""),
   };

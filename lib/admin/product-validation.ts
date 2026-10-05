@@ -17,6 +17,7 @@ export interface ProductFormInput {
   images: string[];
   specificationsJson: string;
   stockQuantity: number;
+  lowStockThreshold: number;
   isActive: boolean;
   /** GST percent as typed ("", "5", "18"); blank = not configured. */
   gstRate: string;
@@ -31,6 +32,7 @@ export type ProductField =
   | "images"
   | "specificationsJson"
   | "stockQuantity"
+  | "lowStockThreshold"
   | "gstRate";
 
 export type ProductFormErrors = Partial<Record<ProductField, string>>;
@@ -45,6 +47,7 @@ export interface ValidProduct {
   images: string[];
   specifications: Json;
   stockQuantity: number;
+  lowStockThreshold: number;
   isActive: boolean;
   /** NUMERIC(5,2) decimal string; NULL = GST not configured (0%). */
   gstRate: string | null;
@@ -118,6 +121,14 @@ export function validateProductInput(
   ) {
     errors.stockQuantity = "Stock must be a whole number from 0 to 1,000,000.";
   }
+  if (
+    !Number.isInteger(input.lowStockThreshold) ||
+    input.lowStockThreshold < 0 ||
+    input.lowStockThreshold > 1_000_000
+  ) {
+    errors.lowStockThreshold =
+      "Low-stock threshold must be a whole number from 0 to 1,000,000.";
+  }
 
   // GST rate: blank = not configured (0% on GST orders). Otherwise a
   // percent from 0–100 with at most 2 decimals, stored NUMERIC(5,2).
@@ -146,6 +157,7 @@ export function validateProductInput(
       images,
       specifications,
       stockQuantity: input.stockQuantity,
+      lowStockThreshold: input.lowStockThreshold,
       isActive: input.isActive,
       gstRate,
     },

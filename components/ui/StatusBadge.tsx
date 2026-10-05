@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/Badge";
 import type { OrderStatus, PaymentStatus } from "@/types";
+import type { StockStatus } from "@/lib/inventory/availability";
 
 const orderTones: Record<OrderStatus, "info" | "accent" | "success" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -54,8 +55,13 @@ export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   return <Badge tone={paymentTones[status]}>{paymentLabels[status]}</Badge>;
 }
 
-export function StockBadge({ quantity }: { quantity: number }) {
-  if (quantity <= 0) return <Badge tone="danger">Out of stock</Badge>;
-  if (quantity <= 10) return <Badge tone="warning">Low stock</Badge>;
+/**
+ * Storefront availability pill. Status-only by design: exact counts
+ * never reach the customer UI (they are re-checked server-side at
+ * order time, where stale figures fail safe instead of overselling).
+ */
+export function StockBadge({ status }: { status: StockStatus }) {
+  if (status === "out_of_stock") return <Badge tone="danger">Out of stock</Badge>;
+  if (status === "low_stock") return <Badge tone="warning">Low stock</Badge>;
   return <Badge tone="success">In stock</Badge>;
 }

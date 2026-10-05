@@ -8,15 +8,19 @@ import {
   lineTaxPaise,
   type OrderTax,
 } from "@/lib/tax/india";
+import { fetchAvailability } from "@/lib/inventory/availability";
 
 /**
  * Server-side order pricing (server-only).
  *
  * Accepts ONLY product IDs, quantities, pincode and (optional) billing
- * identity — never prices, rates, charges or totals. Every rupee below
- * is recomputed from trusted product rows, the GST engine and the
- * delivery engine, so client-submitted money is structurally
- * impossible to honour.
+ * identity — never prices, rates, charges, totals, stock figures or
+ * availability flags. Every rupee below is recomputed from trusted
+ * product rows, the GST engine and the delivery engine, so
+ * client-submitted money is structurally impossible to honour.
+ * Quantities are validated against live reserve-aware availability
+ * (stale carts and forged counts are rejected with the item named) —
+ * this check is advisory; the atomic guard lives in create_order().
  *
  *   subtotal = Σ(unit_price × quantity)      (integer paise, ex-GST)
  *   tax      = GST engine over live product rates (paise-exact)
@@ -70,13 +74,20 @@ interface ProductRow {
   price: string;
   gst_rate: string | null;
   is_active: boolean;
+  /**
+   * Reserve-aware units available (on-hand minus live holds) at fetch
+   * time. Advisory only — create_order() re-checks atomically under
+   * row locks, so quote-to-order races fail safe instead of overselling.
+   */
+  available: number;
 }
 
 export const ORDER_MAX_QTY = 999;
 
 /**
  * Pure line pricing over already-fetched product rows.
- * Throws 422 on unknown/inactive products and bad quantities.
+ * Throws 422 on unknown/inactive products, bad quantities and
+ * requested quantities beyond live availability (item named).
  */
 export function priceOrderLines(
   products: ProductRow[],
@@ -106,6 +117,16 @@ export function priceOrderLines(
       throw new AppError(
         "VALIDATION_ERROR",
         "One of the products is no longer available.",
+        422,
+      );
+    }
+    const available = Math.max(0, Math.floor(product.available));
+    if (item.quantity > available) {
+      throw new AppError(
+        "INSUFFICIENT_STOCK",
+        available <= 0
+          ? `"${product.name}" is out of stock right now.`
+          : `Only ${available} of "${product.name}" available right now.`,
         422,
       );
     }
@@ -148,10 +169,23 @@ export async function quoteOrder(input: {
       500,
     );
   }
-  const lines = priceOrderLines(
-    (data ?? []) as unknown as ProductRow[],
-    input.items,
+  // Live reserve-aware availability. Fail closed: without it the order
+  // cannot be validated, so the quote aborts instead of guessing.
+  const availability = await fetchAvailability(supabase, ids);
+  if (!availability) {
+    throw new AppError(
+      "INTERNAL_ERROR",
+      "Could not check stock. Please try again.",
+      500,
+    );
+  }
+  const rows = ((data ?? []) as unknown as Omit<ProductRow, "available">[]).map(
+    (p) => ({
+      ...p,
+      available: availability.get(p.id)?.available ?? 0,
+    }),
   );
+  const lines = priceOrderLines(rows, input.items);
   const subtotalPaise = lines.reduce((n, l) => n + l.lineTotalPaise, 0);
 
   const billing: BillingInput = {

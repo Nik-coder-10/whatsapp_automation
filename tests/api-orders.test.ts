@@ -68,6 +68,12 @@ function wireDb(price: string, charge: string) {
         error: null,
       };
     }
+    if (op.rpc === "product_availability") {
+      return {
+        rows: [{ product_id: P1, available: 50, low_stock_threshold: 5, status: "in_stock" }],
+        error: null,
+      };
+    }
     if (op.table === "delivery_pincode_rates") {
       return { rows: [rateRow(charge)], error: null };
     }
@@ -192,6 +198,12 @@ describe("POST /api/orders (server-authoritative totals)", () => {
           error: null,
         };
       }
+      if (op.rpc === "product_availability") {
+        return {
+          rows: [{ product_id: P1, available: 50, low_stock_threshold: 5, status: "in_stock" }],
+          error: null,
+        };
+      }
       if (op.table === "delivery_pincode_rates") {
         return { rows: [], error: null };
       }
@@ -211,6 +223,12 @@ describe("POST /api/orders (server-authoritative totals)", () => {
       if (op.table === "products") {
         return {
           rows: [{ id: P1, name: "T", price: "6299.00", is_active: true }],
+          error: null,
+        };
+      }
+      if (op.rpc === "product_availability") {
+        return {
+          rows: [{ product_id: P1, available: 50, low_stock_threshold: 5, status: "in_stock" }],
           error: null,
         };
       }

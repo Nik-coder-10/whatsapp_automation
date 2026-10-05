@@ -76,9 +76,9 @@ describe("withinOrderWindow", () => {
 });
 
 const PRODUCTS = [
-  { id: "p1", name: "Trolley", price: "6299.00", gst_rate: "18.00", is_active: true },
-  { id: "p2", name: "Stacker", price: "285000.00", gst_rate: null, is_active: true },
-  { id: "p3", name: "Retired", price: "100.00", gst_rate: null, is_active: false },
+  { id: "p1", name: "Trolley", price: "6299.00", gst_rate: "18.00", is_active: true, available: 10 },
+  { id: "p2", name: "Stacker", price: "285000.00", gst_rate: null, is_active: true, available: 3 },
+  { id: "p3", name: "Retired", price: "100.00", gst_rate: null, is_active: false, available: 0 },
 ];
 
 describe("priceOrderLines (server authority: ids + quantities only)", () => {

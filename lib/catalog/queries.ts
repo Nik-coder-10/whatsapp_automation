@@ -22,9 +22,16 @@ import {
   type CatalogueSort,
   type ProductCategory,
 } from "@/lib/catalog/products";
+import {
+  DEFAULT_LOW_STOCK_THRESHOLD,
+  fetchAvailability,
+  stockStatus,
+  type StockStatus,
+} from "@/lib/inventory/availability";
 
 const PRODUCT_COLUMNS =
-  "id,name,slug,description,category,specifications,price,stock_quantity,images,is_active";
+  "id,name,slug,description,category,specifications,price,stock_quantity," +
+  "low_stock_threshold,images,is_active";
 const FEATURED_LIMIT = 4;
 
 type ServerClient = Awaited<
@@ -44,6 +51,39 @@ function toCatalog(rows: unknown): CatalogProduct[] {
   return (rows ?? []) as unknown as CatalogProduct[];
 }
 
+/** On-hand status for static rows (offline fallback — no holds visible). */
+function fallbackStatus(p: {
+  stock_quantity: number;
+  low_stock_threshold?: number;
+}): StockStatus {
+  return stockStatus(
+    p.stock_quantity,
+    p.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD,
+  );
+}
+
+/**
+ * Attach reserve-aware storefront status to live rows (one batched RPC).
+ * Degrades to on-hand status if the RPC fails — display only; the order
+ * engine re-checks authoritatively, so browsing never breaks on a
+ * transient availability outage.
+ */
+async function withAvailability(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  products: CatalogProduct[],
+): Promise<CatalogProduct[]> {
+  if (products.length === 0) return products;
+  const map = await fetchAvailability(
+    supabase,
+    products.map((p) => p.id),
+  );
+  return products.map((p) => ({
+    ...p,
+    availability:
+      map?.get(p.id)?.status ?? fallbackStatus(p),
+  }));
+}
+
 /** Newest active products, capped (homepage featured grid). */
 export async function getFeaturedProducts(): Promise<CatalogProduct[]> {
   const supabase = await getServerClient();
@@ -59,7 +99,7 @@ export async function getFeaturedProducts(): Promise<CatalogProduct[]> {
     return FEATURED_PRODUCTS;
   }
   const rows = toCatalog(data);
-  return rows.length > 0 ? rows : [];
+  return rows.length > 0 ? await withAvailability(supabase, rows) : [];
 }
 
 /**
@@ -82,7 +122,9 @@ export const getProductBySlug = cache(
       console.error("[catalog] product query failed:", error.message);
       return ALL_PRODUCTS.find((p) => p.slug === slug) ?? null;
     }
-    return (data as unknown as CatalogProduct | null) ?? null;
+    const row = (data as unknown as CatalogProduct | null) ?? null;
+    if (!row) return null;
+    return (await withAvailability(supabase, [row]))[0] ?? row;
   },
 );
 
@@ -161,7 +203,7 @@ export async function getRelatedProducts(
     console.error("[catalog] related query failed:", error.message);
     return pick(ALL_PRODUCTS.filter((p) => p.is_active));
   }
-  return toCatalog(data);
+  return withAvailability(supabase, toCatalog(data));
 }
 
 /**
@@ -440,7 +482,10 @@ async function queryLiveRange(
     console.error("[catalog] catalogue page failed:", error.message);
     return null;
   }
-  return { products: toCatalog(data), total: count ?? 0 };
+  return {
+    products: await withAvailability(supabase, toCatalog(data)),
+    total: count ?? 0,
+  };
 }
 
 /**
@@ -475,19 +520,23 @@ async function queryLiveSearch(
   const rows = (data ?? []) as unknown as Array<
     CatalogProduct & { total_count: number | string }
   >;
+  const products = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description,
+    category: row.category,
+    specifications: row.specifications,
+    price: row.price,
+    stock_quantity: row.stock_quantity,
+    low_stock_threshold: row.low_stock_threshold,
+    images: row.images,
+    is_active: row.is_active,
+    // Resolved below from reserve-aware availability.
+    availability: fallbackStatus(row),
+  }));
   return {
-    products: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      slug: row.slug,
-      description: row.description,
-      category: row.category,
-      specifications: row.specifications,
-      price: row.price,
-      stock_quantity: row.stock_quantity,
-      images: row.images,
-      is_active: row.is_active,
-    })),
+    products: await withAvailability(supabase, products),
     total: rows.length > 0 ? Number(rows[0]?.total_count ?? 0) : 0,
   };
 }

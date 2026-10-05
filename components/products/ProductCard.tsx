@@ -42,7 +42,7 @@ export function ProductCard({
           <p className="text-xs font-semibold tracking-wide text-brand-700 uppercase">
             {product.category}
           </p>
-          <StockBadge quantity={product.stock_quantity} />
+          <StockBadge status={product.availability} />
         </div>
         <h3 className="line-clamp-2 min-h-[3rem] text-base leading-6 font-bold text-zinc-900">
           <Link href={`/products/${product.slug}`} className="hover:text-brand-700 hover:underline">
@@ -54,17 +54,26 @@ export function ProductCard({
           <PriceDisplay amountPaise={priceToPaise(product.price)} unitNote="excl. GST" />
           {actions ?? (
             <span className="flex shrink-0 items-center gap-2">
-              <AddToCartButton
-                product={{
-                  productId: product.id,
-                  slug: product.slug,
-                  name: product.name,
-                  category: product.category,
-                  pricePaise: priceToPaise(product.price),
-                  image: image,
-                  stockQuantity: product.stock_quantity,
-                }}
-              />
+              {product.availability === "out_of_stock" ? (
+                <span
+                  aria-disabled="true"
+                  className="inline-flex h-11 shrink-0 cursor-not-allowed items-center rounded-md bg-zinc-100 px-4 text-sm font-bold text-zinc-400"
+                >
+                  Sold out
+                </span>
+              ) : (
+                <AddToCartButton
+                  product={{
+                    productId: product.id,
+                    slug: product.slug,
+                    name: product.name,
+                    category: product.category,
+                    pricePaise: priceToPaise(product.price),
+                    image: image,
+                    stockQuantity: product.stock_quantity,
+                  }}
+                />
+              )}
               <Link
                 href={`/products/${product.slug}`}
                 className="inline-flex h-11 items-center rounded-md bg-brand-800 px-4 text-sm font-semibold text-white hover:bg-brand-700"

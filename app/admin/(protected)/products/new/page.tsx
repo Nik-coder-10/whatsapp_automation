@@ -18,6 +18,7 @@ const EMPTY: ProductFormInput = {
   images: [],
   specificationsJson: "{}",
   stockQuantity: 0,
+  lowStockThreshold: 5,
   isActive: true,
   gstRate: "",
 };
