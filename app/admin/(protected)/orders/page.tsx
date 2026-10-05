@@ -69,7 +69,19 @@ export default async function AdminOrdersPage({
     "h-10 rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-900 outline-none focus:border-brand-700";
 
   return (
-    <AdminShell title="Orders" subtitle="Search, filter and manage customer orders">
+    <AdminShell
+      title="Orders"
+      subtitle="Search, filter and manage customer orders"
+      actions={
+        <a
+          href="/api/admin/export/orders"
+          download
+          className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
+        >
+          Export CSV
+        </a>
+      }
+    >
       <form
         method="get"
         action="/admin/orders"

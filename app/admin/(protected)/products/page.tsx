@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { BulkImportDialog } from "@/components/admin/BulkImportDialog";
+import { listRecentAudits, type AuditRow } from "@/lib/admin/audit";
 import { AdminShell } from "@/components/layout/admin/AdminShell";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/States";
@@ -37,10 +39,11 @@ export default async function AdminProductsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = parseAdminProductQuery(await searchParams);
-  const [result, categories, alerts] = await Promise.all([
+  const [result, categories, alerts, audits] = await Promise.all([
     listAdminProducts(query).catch(() => null),
     listAdminCategories().catch((): string[] => []),
     listInventoryAlerts().catch(() => null),
+    listRecentAudits(10).catch((): AuditRow[] => []),
   ]);
 
   const base: Record<string, string | undefined> = {
@@ -291,6 +294,64 @@ export default async function AdminProductsPage({
               </nav>
             ) : null}
           </>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
+        <h2 className="text-base font-bold text-zinc-900">Bulk import &amp; export</h2>
+        <div className="mt-3">
+          <BulkImportDialog
+            dataset="products"
+            title="Slug is the stable match key (existing slugs update in place). Images and specifications stay form-managed."
+            columnsHelp="name,slug,description,category,price,stock,threshold,active,gst,weight"
+            sampleCsv={`name,slug,description,category,price,stock,threshold,active,gst,weight
+Demo Trolley,demo-trolley,Steel platform trolley,Trolleys,6299.00,10,5,true,18,32`}
+            sampleName="products-sample.csv"
+          />
+          <p className="mt-3 text-sm">
+            <a
+              href="/api/admin/export/products"
+              download
+              className="font-semibold text-brand-700 hover:underline"
+            >
+              Export all products (CSV)
+            </a>
+            <span className="text-zinc-500"> — same columns as import.</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
+        <h2 className="text-base font-bold text-zinc-900">Recent bulk operations</h2>
+        {audits.length === 0 ? (
+          <p className="mt-1 text-sm text-zinc-500">
+            No imports or exports recorded yet.
+          </p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+            {audits.map((a) => (
+              <li
+                key={a.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2"
+              >
+                <span>
+                  <strong>{a.operation}</strong>{" "}
+                  <span className="text-zinc-500">
+                    ({a.dataset}) · {a.totalRows} rows
+                    {a.result !== "success" ? ` · ${a.result}` : ""}
+                  </span>
+                </span>
+                <span className="text-xs text-zinc-500">
+                  {new Date(a.createdAt).toLocaleString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </AdminShell>

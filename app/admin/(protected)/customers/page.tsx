@@ -28,7 +28,19 @@ export default async function AdminCustomersPage({
   }
 
   return (
-    <AdminShell title="Customers" subtitle="Repeat buyers, value and history">
+    <AdminShell
+      title="Customers"
+      subtitle="Repeat buyers, value and history"
+      actions={
+        <a
+          href="/api/admin/export/customers"
+          download
+          className="inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
+        >
+          Export CSV
+        </a>
+      }
+    >
       <form
         method="get"
         action="/admin/customers"

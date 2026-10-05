@@ -5,7 +5,7 @@ import { RatesSection } from "@/components/admin/delivery/RatesSection";
 import { SlabsSection } from "@/components/admin/delivery/SlabsSection";
 import { CategoryRulesSection } from "@/components/admin/delivery/CategoryRulesSection";
 import { PreviewTool } from "@/components/admin/delivery/PreviewTool";
-import { ImportTool } from "@/components/admin/delivery/ImportTool";
+import { BulkImportDialog } from "@/components/admin/BulkImportDialog";
 import {
   listCategoryRules,
   listDeliveryPartners,
@@ -120,10 +120,28 @@ export default async function AdminDeliveryPage({
             </p>
           </section>
 
-          <section aria-label="Bulk import" className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-base font-bold text-zinc-900">9. Bulk CSV import</h2>
+          <section aria-label="Bulk import and export" className="rounded-lg border border-zinc-200 bg-white p-5">
+            <h2 className="text-base font-bold text-zinc-900">9. Bulk CSV import &amp; export</h2>
             <div className="mt-3">
-              <ImportTool />
+              <BulkImportDialog
+                dataset="rates"
+                title="Partner matches by name. Same (pincode, partner) twice updates in place."
+                columnsHelp="pincode,partner,charge,serviceable,min_order,max_order,eta_min,eta_max"
+                sampleCsv={`pincode,partner,charge,serviceable,min_order,max_order,eta_min,eta_max
+400001,Delhivery,450.00,true,,,2,4
+400001,XpressBees,520.00,true,,,2,5`}
+                sampleName="rates-sample.csv"
+              />
+              <p className="mt-3 text-sm">
+                <a
+                  href="/api/admin/export/rates"
+                  download
+                  className="font-semibold text-brand-700 hover:underline"
+                >
+                  Export all rates (CSV)
+                </a>
+                <span className="text-zinc-500"> — same columns as import.</span>
+              </p>
             </div>
           </section>
         </div>

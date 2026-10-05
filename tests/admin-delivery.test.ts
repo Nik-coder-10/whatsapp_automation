@@ -277,7 +277,12 @@ describe("bulk import", () => {
       if (op.table === "delivery_pincode_rates" && !op.updateValues) {
         return { rows: [], error: null };
       }
-      if (op.updateValues) return { rows: [{ id: "r1" }], error: null };
+      if (op.rpc === "import_rates") {
+        return { rows: [{ inserted: 2, updated: 0 }], error: null };
+      }
+      if (op.table === "admin_audit_log") {
+        return { rows: [{ id: "a1" }], error: null };
+      }
       throw new Error(`unreachable ${op.table}`);
     };
     const res = await post(importPost, {
@@ -303,23 +308,29 @@ describe("bulk import", () => {
         // Bare read = remote-surcharge preservation lookup (not a write).
         return { rows: [], error: null };
       }
-      if (op.updateValues) {
+      if (op.rpc === "import_rates") {
         writes++;
-        return { rows: [{ id: "r1" }], error: null };
+        return { rows: [{ inserted: 1, updated: 0 }], error: null };
       }
       throw new Error("unreachable");
     };
     const res = await post(importPost, {
       csv: csv("400001,Delhivery,450.00,true,,,2,4\n400002,UnknownCo,10,true,,,,"),
     });
+    // Validation gate: 422 with per-row details, zero writes (no RPC,
+    // no audit — nothing happened).
+    expect(res.status).toBe(422);
     const json = (await res.json()) as {
       ok: boolean;
-      data: { total: number; inserted: number; invalid: Array<{ line: number }> };
+      error: {
+        code: string;
+        details: { invalid: Array<{ line: number }>; invalidTotal: number };
+      };
     };
-    expect(json.ok).toBe(true);
-    expect(json.data.inserted).toBe(0);
-    expect(json.data.invalid).toHaveLength(1);
-    expect(json.data.invalid[0]?.line).toBe(3);
+    expect(json.ok).toBe(false);
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.details.invalid).toHaveLength(1);
+    expect(json.error.details.invalid[0]?.line).toBe(3);
     expect(writes).toBe(0);
   });
 });

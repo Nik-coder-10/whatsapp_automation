@@ -20,6 +20,7 @@
 | `0017_invoices.sql` | Invoices: order-time customer snapshots (backfilled, then NOT NULL), `invoices` frozen records (UNIQUE number + freeze trigger), `INV/FY/SEQ` numbering (`invoice_financial_year()` + sequence), `create_order()` replacement. |
 | `0018_inventory.sql` | Inventory: `products.low_stock_threshold`, `orders.stock_state` gate, `stock_reservations` holds (TTL + sweep), `inventory_events` audit, `product_availability()` RPC, reserve-in-`create_order()`, `consume_`/`restore_reservation()` RPCs, `search_products()` threshold column. |
 | `0019_delivery_rules.sql` | Delivery rules: `products.weight_kg`, pincode `remote_surcharge`, `delivery_weight_slabs` (per-partner bands replacing base), `delivery_category_rules` (flat per-order handling), order `delivery_weight_kg` + `delivery_rule_summary` snapshots, `create_order()` replacement. |
+| `0020_bulk_operations.sql` | Bulk ops: append-only `admin_audit_log` + atomic `import_products()` (slug-matched) / `import_rates()` (pair-matched) RPCs — any failure rolls the whole file back. |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
