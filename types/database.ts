@@ -110,8 +110,23 @@ export interface OrderRow {
   delivery_partner_name: string;
   /** GSTIN snapshot (customer master may change later). */
   gstin_snapshot: string | null;
+  /** Order-time customer identity (frozen for invoices). */
+  customer_name_snapshot: string;
+  customer_phone_snapshot: string;
+  customer_email_snapshot: string | null;
   payment_status: PaymentStatus;
   order_status: OrderStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceRow {
+  id: string;
+  order_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  /** Frozen canonical InvoiceData (null only before first freeze). */
+  data: Json;
   created_at: string;
   updated_at: string;
 }

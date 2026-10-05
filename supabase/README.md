@@ -17,6 +17,7 @@
 | `0014_order_events.sql` | Append-only `order_events` audit log (admin read/insert, no updates). |
 | `0015_customer_aggregates.sql` | `get_admin_customers()` + `get_admin_customer()` aggregate RPCs (repeat-buyer signals). |
 | `0016_gst_billing.sql` | B2B GST: `products.gst_rate`, customer billing master, order billing + tax snapshots, per-line tax, widened total CHECK, `create_order()` replacement. |
+| `0017_invoices.sql` | Invoices: order-time customer snapshots (backfilled, then NOT NULL), `invoices` frozen records (UNIQUE number + freeze trigger), `INV/FY/SEQ` numbering (`invoice_financial_year()` + sequence), `create_order()` replacement. |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |

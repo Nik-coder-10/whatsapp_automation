@@ -52,6 +52,25 @@ export default async function AdminOrderPage({
             </h1>
             <OrderStatusBadge status={order.orderStatus} />
             <PaymentStatusBadge status={order.paymentStatus} />
+            {order.paymentStatus === "paid" ? (
+              <span className="flex flex-wrap gap-2">
+                <a
+                  href={`/api/admin/orders/${order.id}/invoice`}
+                  download
+                  className="inline-flex h-10 items-center rounded-md bg-brand-800 px-4 text-sm font-bold text-white hover:bg-brand-700"
+                >
+                  Download Invoice
+                </a>
+                <a
+                  href={`/api/admin/orders/${order.id}/invoice?disposition=inline`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-10 items-center rounded-md border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-800 hover:bg-zinc-50"
+                >
+                  Print Invoice
+                </a>
+              </span>
+            ) : null}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">

@@ -297,6 +297,21 @@ export default async function OrderPage({
           ) : (
             <p className="mt-3 text-sm leading-6 text-zinc-600">Payment confirmed.</p>
           )}
+          <div className="mt-4 border-t border-zinc-100 pt-4">
+            {order.paymentStatus === "paid" ? (
+              <a
+                href={`/api/orders/${order.id}/invoice`}
+                download
+                className="inline-flex h-11 items-center justify-center rounded-md bg-brand-800 px-5 text-sm font-bold text-white hover:bg-brand-700"
+              >
+                Download Invoice
+              </a>
+            ) : (
+              <p className="text-xs leading-5 text-zinc-500">
+                The tax invoice is issued after payment verification.
+              </p>
+            )}
+          </div>
         </aside>
       </div>
     </div>
