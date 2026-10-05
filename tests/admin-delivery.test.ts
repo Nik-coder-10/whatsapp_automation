@@ -98,6 +98,7 @@ describe("validateRateInput", () => {
     partnerId: PARTNER_ID,
     serviceable: true,
     chargeRupees: "450.00",
+    remoteSurchargeRupees: "",
     minOrderRupees: "",
     maxOrderRupees: "",
     etaMinDays: "",
@@ -108,6 +109,18 @@ describe("validateRateInput", () => {
     const { errors, value } = validateRateInput(base);
     expect(errors).toEqual({});
     expect(value?.chargePaise).toBe(45000);
+    expect(value?.remoteSurchargePaise).toBe(0);
+  });
+
+  it("accepts a remote surcharge and rejects a bad one", () => {
+    expect(
+      validateRateInput({ ...base, remoteSurchargeRupees: "120.00" }).value
+        ?.remoteSurchargePaise,
+    ).toBe(12000);
+    expect(
+      validateRateInput({ ...base, remoteSurchargeRupees: "12.999" }).errors
+        .remoteSurchargeRupees,
+    ).toBeTruthy();
   });
 
   it("rejects bad pincodes, partners, charges and windows", () => {
@@ -286,8 +299,8 @@ describe("bulk import", () => {
       if (op.table === "delivery_partners") {
         return { rows: [{ id: PARTNER_ID, name: "Delhivery" }], error: null };
       }
-      if (op.table === "delivery_pincode_rates") {
-        writes++;
+      if (op.table === "delivery_pincode_rates" && !op.updateValues) {
+        // Bare read = remote-surcharge preservation lookup (not a write).
         return { rows: [], error: null };
       }
       if (op.updateValues) {

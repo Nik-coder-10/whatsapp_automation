@@ -52,6 +52,9 @@ export async function persistOrder(input: {
       delivery_partner_id: quote.deliveryPartnerId,
       delivery_partner_name: quote.deliveryPartnerName,
       gstin_snapshot: input.customer.gstin,
+      delivery_weight_kg:
+        quote.deliveryWeightKg === null ? null : quote.deliveryWeightKg.toFixed(3),
+      delivery_rule_summary: quote.deliveryRuleSummary,
       payment_status: "pending",
       order_status: "pending_payment",
       tax_treatment: quote.tax.treatment,
@@ -130,6 +133,10 @@ export interface OrderSummary {
   orderNumber: string;
   subtotalPaise: number;
   deliveryChargePaise: number;
+  /** Frozen shipment weight in kg (null when unknown at order time). */
+  deliveryWeightKg: number | null;
+  /** Frozen freight rules (null when plain pincode pricing applied). */
+  deliveryRuleSummary: string | null;
   totalPaise: number;
   taxTreatment: string;
   taxablePaise: number;
@@ -148,6 +155,7 @@ export async function fetchOrderSummary(orderId: string): Promise<OrderSummary> 
     .select(
       "id,order_number,subtotal,delivery_charge,total_amount," +
         "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
+        "delivery_weight_kg,delivery_rule_summary," +
         "payment_status,order_status",
     )
     .eq("id", orderId)
@@ -164,6 +172,8 @@ export async function fetchOrderSummary(orderId: string): Promise<OrderSummary> 
     order_number: string;
     subtotal: string;
     delivery_charge: string;
+    delivery_weight_kg: string | null;
+    delivery_rule_summary: string | null;
     total_amount: string;
     tax_treatment: string;
     taxable_amount: string;
@@ -179,6 +189,9 @@ export async function fetchOrderSummary(orderId: string): Promise<OrderSummary> 
     orderNumber: row.order_number,
     subtotalPaise: paise(row.subtotal),
     deliveryChargePaise: paise(row.delivery_charge),
+    deliveryWeightKg:
+      row.delivery_weight_kg === null ? null : Number(row.delivery_weight_kg),
+    deliveryRuleSummary: row.delivery_rule_summary,
     totalPaise: paise(row.total_amount),
     taxTreatment: row.tax_treatment,
     taxablePaise: paise(row.taxable_amount),

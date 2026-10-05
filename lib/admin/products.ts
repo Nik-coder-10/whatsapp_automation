@@ -240,6 +240,8 @@ export type AdminProductDetail = AdminProductListItem & {
   updatedAt: string;
   /** NUMERIC(5,2) decimal string; NULL = GST not configured. */
   gstRate: string | null;
+  /** NUMERIC(10,3) decimal string; NULL = shipping weight unknown. */
+  weightKg: string | null;
 };
 
 export async function getAdminProduct(
@@ -250,7 +252,7 @@ export async function getAdminProduct(
   const { data, error } = await client
     .from("products")
     .select(
-      "id,name,slug,description,category,price,gst_rate,stock_quantity," +
+      "id,name,slug,description,category,price,gst_rate,weight_kg,stock_quantity," +
         "low_stock_threshold,images," +
         "specifications,is_active,created_at,updated_at",
     )
@@ -271,6 +273,7 @@ export async function getAdminProduct(
     category: r.category,
     pricePaise: Math.round(Number(r.price) * 100),
     gstRate: r.gst_rate,
+    weightKg: r.weight_kg,
     stockQuantity: r.stock_quantity,
     lowStockThreshold: r.low_stock_threshold,
     available: a?.available ?? r.stock_quantity,
@@ -310,6 +313,7 @@ async function writeProduct(
     specifications: value.specifications,
     price: paiseToDecimal(value.pricePaise),
     gst_rate: value.gstRate,
+    weight_kg: value.weightKg,
     stock_quantity: value.stockQuantity,
     low_stock_threshold: value.lowStockThreshold,
     images: value.images,

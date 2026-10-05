@@ -77,6 +77,12 @@ function wireDb(price: string, charge: string) {
     if (op.table === "delivery_pincode_rates") {
       return { rows: [rateRow(charge)], error: null };
     }
+    if (op.table === "delivery_weight_slabs") {
+      return { rows: [], error: null };
+    }
+    if (op.table === "delivery_category_rules") {
+      return { rows: [], error: null };
+    }
     throw new Error(`unexpected server op on ${op.table}`);
   };
   adminHandler = (op) => {
@@ -207,6 +213,12 @@ describe("POST /api/orders (server-authoritative totals)", () => {
       if (op.table === "delivery_pincode_rates") {
         return { rows: [], error: null };
       }
+      if (op.table === "delivery_weight_slabs") {
+        return { rows: [], error: null };
+      }
+      if (op.table === "delivery_category_rules") {
+        return { rows: [], error: null };
+      }
       throw new Error("unreachable");
     };
     const res = await post(validBody({ pincode: "799001" }));
@@ -234,6 +246,12 @@ describe("POST /api/orders (server-authoritative totals)", () => {
       }
       if (op.table === "delivery_pincode_rates") {
         return { rows: [rateRow("450.00")], error: null };
+      }
+      if (op.table === "delivery_weight_slabs") {
+        return { rows: [], error: null };
+      }
+      if (op.table === "delivery_category_rules") {
+        return { rows: [], error: null };
       }
       throw new Error("unreachable");
     };

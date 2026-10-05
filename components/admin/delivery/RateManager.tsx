@@ -14,6 +14,7 @@ export interface RateDraft {
   partnerId: string;
   serviceable: boolean;
   chargeRupees: string;
+  remoteSurchargeRupees: string;
   minOrderRupees: string;
   maxOrderRupees: string;
   etaMinDays: string;
@@ -25,6 +26,7 @@ const EMPTY_DRAFT: RateDraft = {
   partnerId: "",
   serviceable: true,
   chargeRupees: "",
+  remoteSurchargeRupees: "",
   minOrderRupees: "",
   maxOrderRupees: "",
   etaMinDays: "",
@@ -51,6 +53,8 @@ export function RateDialog({
           partnerId: initial.partnerId,
           serviceable: initial.serviceable,
           chargeRupees: rupees(initial.chargePaise),
+          remoteSurchargeRupees:
+            initial.remoteSurchargePaise === 0 ? "" : rupees(initial.remoteSurchargePaise),
           minOrderRupees:
             initial.minOrderPaise === null ? "" : rupees(initial.minOrderPaise),
           maxOrderRupees:
@@ -144,6 +148,14 @@ export function RateDialog({
           placeholder="e.g. 450.00"
           value={form.chargeRupees}
           onChange={(e) => set("chargeRupees", e.target.value)}
+        />
+        <Input
+          label="Remote surcharge ₹ (optional)"
+          inputMode="decimal"
+          placeholder="e.g. 120.00"
+          value={form.remoteSurchargeRupees}
+          onChange={(e) => set("remoteSurchargeRupees", e.target.value)}
+          hint="Added on top, shown as its own line at checkout."
         />
         <label className="flex cursor-pointer items-center gap-2 self-end pb-2.5 text-sm font-semibold text-zinc-800">
           <input

@@ -70,5 +70,6 @@ export function coerceProductInput(body: unknown): ProductFormInput {
         : Number(r["lowStockThreshold"] ?? NaN),
     isActive: r["isActive"] !== false,
     gstRate: String(r["gstRate"] ?? ""),
+    weightKg: String(r["weightKg"] ?? ""),
   };
 }

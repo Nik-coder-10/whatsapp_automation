@@ -5,12 +5,15 @@ import { quoteDelivery } from "@/lib/delivery/engine";
 import { normalizePincode } from "@/lib/validations/common";
 
 /**
- * POST /api/delivery/check — { pincode, subtotalPaise? } → delivery quote.
+ * POST /api/delivery/check — { pincode, subtotalPaise?, items? } → quote.
  *
  * Server authority: validates the pincode, queries trusted rate rows,
- * applies the selection strategy and returns the verdict. The browser
- * only displays it; the order API repeats the calculation and never
- * trusts client money. Creates nothing.
+ * applies the selection strategy and returns the verdict. Items carry
+ * IDs + quantities ONLY — weights, categories and prices are re-fetched
+ * live, so forged client figures (weight, charge, availability) are
+ * structurally ignored. The browser only displays the verdict; the
+ * order API repeats the calculation and never trusts client money.
+ * Creates nothing.
  */
 export async function POST(req: Request) {
   try {
@@ -41,7 +44,39 @@ export async function POST(req: Request) {
     ) {
       return badRequest("Order subtotal must be a non-negative integer.");
     }
-    const quote = await quoteDelivery(pincode, subtotalPaise);
+    // IDs + quantities only. Anything else on the items (weight, price,
+    // charge, availability) is dropped before the engine sees it.
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rawItems = record["items"];
+    let items: Array<{ productId: string; quantity: number }> | undefined;
+    if (rawItems !== undefined && rawItems !== null) {
+      if (!Array.isArray(rawItems) || rawItems.length > 50) {
+        return badRequest("Items must be a list of up to 50 entries.");
+      }
+      items = [];
+      for (const raw of rawItems) {
+        if (typeof raw !== "object" || raw === null) {
+          return badRequest("Each item needs a productId and a quantity.");
+        }
+        const row = raw as Record<string, unknown>;
+        const productId = String(row["productId"] ?? "");
+        const quantity = row["quantity"];
+        if (!UUID_RE.test(productId)) {
+          return badRequest("One of the products is invalid.");
+        }
+        if (
+          typeof quantity !== "number" ||
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > 999
+        ) {
+          return badRequest("Quantities must be whole numbers from 1 to 999.");
+        }
+        items.push({ productId, quantity });
+      }
+    }
+    const quote = await quoteDelivery(pincode, subtotalPaise, items ?? []);
     return ok({
       serviceable: quote.serviceable,
       pincode: quote.pincode,
@@ -49,6 +84,12 @@ export async function POST(req: Request) {
       deliveryChargePaise: quote.selected?.deliveryChargePaise ?? null,
       ...(quote.selected?.etaDays ? { etaDays: quote.selected.etaDays } : {}),
       options: quote.options,
+      totalWeightKg: quote.totalWeightKg,
+      freightPaise: quote.freightPaise,
+      remotePaise: quote.remotePaise,
+      handlingPaise: quote.handlingPaise,
+      appliedRules: quote.appliedRules,
+      subtotalPaise: quote.subtotalPaise,
       ...(quote.reason ? { reason: quote.reason } : {}),
     });
   } catch (error) {

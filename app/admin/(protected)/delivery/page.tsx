@@ -2,13 +2,19 @@ import type { Metadata } from "next";
 import { AdminShell } from "@/components/layout/admin/AdminShell";
 import { PartnersSection } from "@/components/admin/delivery/PartnersSection";
 import { RatesSection } from "@/components/admin/delivery/RatesSection";
+import { SlabsSection } from "@/components/admin/delivery/SlabsSection";
+import { CategoryRulesSection } from "@/components/admin/delivery/CategoryRulesSection";
 import { PreviewTool } from "@/components/admin/delivery/PreviewTool";
 import { ImportTool } from "@/components/admin/delivery/ImportTool";
 import {
+  listCategoryRules,
   listDeliveryPartners,
+  listDeliveryProducts,
   listDeliveryRates,
+  listWeightSlabs,
   parseAdminRateQuery,
 } from "@/lib/admin/delivery";
+import { listAdminCategories } from "@/lib/admin/products";
 
 export const metadata: Metadata = {
   title: "Delivery",
@@ -28,19 +34,30 @@ export default async function AdminDeliveryPage({
   const query = parseAdminRateQuery(await searchParams);
   let partners = null;
   let rates = null;
+  let slabs = null;
+  let categoryRules = null;
+  let previewProducts: Array<{ id: string; name: string }> = [];
+  let categories: string[] = [];
   try {
-    [partners, rates] = await Promise.all([
-      listDeliveryPartners(),
-      listDeliveryRates(query),
-    ]);
+    [partners, rates, slabs, categoryRules, previewProducts, categories] =
+      await Promise.all([
+        listDeliveryPartners(),
+        listDeliveryRates(query),
+        listWeightSlabs(),
+        listCategoryRules(),
+        listDeliveryProducts(),
+        listAdminCategories(),
+      ]);
   } catch {
     partners = null;
     rates = null;
+    slabs = null;
+    categoryRules = null;
   }
 
   return (
     <AdminShell title="Delivery" subtitle="Partners, pincode rates and serviceability">
-      {!partners || !rates ? (
+      {!partners || !rates || !slabs || !categoryRules ? (
         <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-5">
           <p className="font-bold text-red-800">Couldn&apos;t load delivery data.</p>
         </div>
@@ -71,33 +88,40 @@ export default async function AdminDeliveryPage({
             }}
           />
 
+          <SlabsSection slabs={slabs} partners={partners} />
+
+          <CategoryRulesSection rules={categoryRules} categories={categories} />
+
           <section aria-label="Serviceability preview" className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-base font-bold text-zinc-900">3. Serviceability preview</h2>
+            <h2 className="text-base font-bold text-zinc-900">7. Serviceability preview</h2>
             <p className="mt-1 text-sm text-zinc-600">
               Runs the exact checkout engine — what you see here is what
-              customers get.
+              customers get. Add cart lines to test weight, value and
+              category rules; the breakdown names the winning rule.
             </p>
             <div className="mt-3">
-              <PreviewTool />
+              <PreviewTool products={previewProducts} />
             </div>
           </section>
 
           <section aria-label="Configuration and priority" className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-base font-bold text-zinc-900">4. Configuration &amp; priority</h2>
+            <h2 className="text-base font-bold text-zinc-900">8. Configuration &amp; priority</h2>
             <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5 text-sm text-zinc-700">
               <li>Only active partners with serviceable rows qualify.</li>
+              <li>Category handling surcharges apply per order, on any partner.</li>
+              <li>A matching weight band replaces the pincode base charge for that partner.</li>
               <li>Lowest partner priority number wins (edit it per partner above).</li>
-              <li>Ties break on the lowest delivery charge.</li>
+              <li>Ties break on the lowest partner total (freight + remote surcharge).</li>
               <li>Min/max order windows apply when an order subtotal is known.</li>
             </ol>
             <p className="mt-2 text-sm text-zinc-600">
               Changing rates never touches historical orders — they keep
-              their stored partner and charge.
+              their stored partner, charge, weight and rule summary.
             </p>
           </section>
 
           <section aria-label="Bulk import" className="rounded-lg border border-zinc-200 bg-white p-5">
-            <h2 className="text-base font-bold text-zinc-900">5. Bulk CSV import</h2>
+            <h2 className="text-base font-bold text-zinc-900">9. Bulk CSV import</h2>
             <div className="mt-3">
               <ImportTool />
             </div>

@@ -54,6 +54,8 @@ export interface ProductRow {
   price: string;
   /** GST percent as decimal string (NUMERIC(5,2)); NULL = not configured. */
   gst_rate: string | null;
+  /** Per-unit shipping weight in kg (NUMERIC(10,3)); NULL = unknown. */
+  weight_kg: string | null;
   stock_quantity: number;
   /** Low-stock threshold (units); availability status derives from it. */
   low_stock_threshold: number;

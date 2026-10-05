@@ -57,6 +57,7 @@ const INPUT: ProductFormInput = {
   lowStockThreshold: 2,
   isActive: true,
   gstRate: "18",
+  weightKg: "12.5",
 };
 
 const routePost = (
@@ -136,6 +137,20 @@ describe("validateProductInput", () => {
     expect(
       validateProductInput({ ...INPUT, lowStockThreshold: 0 }).errors,
     ).toEqual({});
+  });
+
+  it("accepts a valid weight and rejects bad weights", () => {
+    expect(validateProductInput(INPUT).value?.weightKg).toBe("12.500");
+    expect(validateProductInput({ ...INPUT, weightKg: "" }).value?.weightKg).toBeNull();
+    expect(
+      validateProductInput({ ...INPUT, weightKg: "12.9999" }).errors.weightKg,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, weightKg: "-3" }).errors.weightKg,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, weightKg: "0" }).errors.weightKg,
+    ).toBeTruthy();
   });
 
   it("rejects non-object and broken JSON specs", () => {

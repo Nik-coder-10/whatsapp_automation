@@ -64,6 +64,10 @@ export interface OrderQuote {
   deliveryPartnerId: string;
   deliveryPartnerName: string;
   deliveryChargePaise: number;
+  /** Shipment weight in kg (3dp) when all line weights are known. */
+  deliveryWeightKg: number | null;
+  /** Frozen human-readable freight rules (no internal IDs). */
+  deliveryRuleSummary: string | null;
   totalPaise: number;
   pincode: string;
 }
@@ -207,7 +211,9 @@ export async function quoteOrder(input: {
     businessStateCode: getBusinessStateCode(),
   });
 
-  const delivery = await quoteDelivery(input.pincode, subtotalPaise);
+  // Lines travel too (IDs + quantities only): the engine re-fetches
+  // weights, categories and prices live — client figures never qualify.
+  const delivery = await quoteDelivery(input.pincode, subtotalPaise, input.items);
   if (!delivery.serviceable || !delivery.selected) {
     throw new AppError(
       "VALIDATION_ERROR",
@@ -223,6 +229,9 @@ export async function quoteOrder(input: {
     deliveryPartnerId: delivery.selected.partner.id,
     deliveryPartnerName: delivery.selected.partner.name,
     deliveryChargePaise: delivery.selected.deliveryChargePaise,
+    deliveryWeightKg: delivery.totalWeightKg,
+    deliveryRuleSummary:
+      delivery.appliedRules.length > 0 ? delivery.appliedRules.join(" + ") : null,
     totalPaise:
       subtotalPaise + tax.totalGstPaise + delivery.selected.deliveryChargePaise,
     pincode: delivery.pincode,

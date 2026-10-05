@@ -152,16 +152,28 @@ export function ProductForm({
           hint="At or below this, the storefront shows “Low stock”."
         />
       </div>
-      <Input
-        label="GST rate % (optional)"
-        name="gstRate"
-        inputMode="decimal"
-        placeholder="e.g. 18"
-        value={form.gstRate}
-        onChange={(e) => set("gstRate", e.target.value)}
-        error={errors.gstRate}
-        hint="Blank = GST not configured (0% on GST orders). Catalogue prices are GST-exclusive."
-      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label="GST rate % (optional)"
+          name="gstRate"
+          inputMode="decimal"
+          placeholder="e.g. 18"
+          value={form.gstRate}
+          onChange={(e) => set("gstRate", e.target.value)}
+          error={errors.gstRate}
+          hint="Blank = GST not configured (0% on GST orders). Catalogue prices are GST-exclusive."
+        />
+        <Input
+          label="Shipping weight kg (optional)"
+          name="weightKg"
+          inputMode="decimal"
+          placeholder="e.g. 12.5"
+          value={form.weightKg}
+          onChange={(e) => set("weightKg", e.target.value)}
+          error={errors.weightKg}
+          hint="Per-unit weight for freight rules. Blank = unknown (weight slabs skipped)."
+        />
+      </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold text-zinc-800">
           Images (paths, up to 10)

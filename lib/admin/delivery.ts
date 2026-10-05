@@ -4,10 +4,15 @@ import { requireAdmin } from "@/lib/auth/session";
 import { AppError } from "@/lib/api/errors";
 import {
   paiseToDecimal as rateDecimal,
+  validateCategoryRuleInput,
   validatePartnerInput,
   validateRateInput,
+  validateSlabInput,
+  type CategoryRuleFormInput,
   type PartnerFormInput,
   type RateFormInput,
+  type SlabBand,
+  type SlabFormInput,
 } from "@/lib/admin/delivery-validation";
 
 /**
@@ -168,6 +173,7 @@ export interface AdminRateRow {
   partnerActive: boolean;
   serviceable: boolean;
   chargePaise: number;
+  remoteSurchargePaise: number;
   minOrderPaise: number | null;
   maxOrderPaise: number | null;
   etaMinDays: number | null;
@@ -225,6 +231,7 @@ interface RateDbRow {
   delivery_partner_id: string;
   serviceable: boolean;
   delivery_charge: string;
+  remote_surcharge: string;
   min_order_amount: string | null;
   max_order_amount: string | null;
   eta_min_days: number | null;
@@ -242,6 +249,7 @@ function mapRate(r: RateDbRow): AdminRateRow {
     partnerActive: r.delivery_partners?.is_active ?? false,
     serviceable: r.serviceable,
     chargePaise: toPaise(r.delivery_charge),
+    remoteSurchargePaise: toPaise(r.remote_surcharge),
     minOrderPaise: toOptPaise(r.min_order_amount),
     maxOrderPaise: toOptPaise(r.max_order_amount),
     etaMinDays: r.eta_min_days,
@@ -251,7 +259,7 @@ function mapRate(r: RateDbRow): AdminRateRow {
 }
 
 const RATE_COLUMNS =
-  "id,pincode,delivery_partner_id,serviceable,delivery_charge," +
+  "id,pincode,delivery_partner_id,serviceable,delivery_charge,remote_surcharge," +
   "min_order_amount,max_order_amount,eta_min_days,eta_max_days,created_at," +
   "delivery_partners!inner(name,is_active)";
 
@@ -322,6 +330,7 @@ export async function upsertDeliveryRate(
     delivery_partner_id: value.partnerId,
     serviceable: value.serviceable,
     delivery_charge: rateDecimal(value.chargePaise),
+    remote_surcharge: rateDecimal(value.remoteSurchargePaise),
     min_order_amount: value.minOrderPaise === null ? null : rateDecimal(value.minOrderPaise),
     max_order_amount: value.maxOrderPaise === null ? null : rateDecimal(value.maxOrderPaise),
     eta_min_days: value.etaMinDays,
@@ -419,6 +428,22 @@ export async function importDeliveryRates(
     ]),
   );
 
+  // Remote surcharges live outside the CSV: preserve whatever the
+  // stored rows already carry so re-imports never wipe them.
+  const { data: stored } = await client
+    .from("delivery_pincode_rates")
+    .select("pincode,delivery_partner_id,remote_surcharge");
+  const storedRemote = new Map(
+    ((stored ?? []) as unknown as Array<{
+      pincode: string;
+      delivery_partner_id: string;
+      remote_surcharge: string;
+    }>).map((r) => [
+      `${r.pincode}::${r.delivery_partner_id}`,
+      r.remote_surcharge,
+    ]),
+  );
+
   const invalid: ImportSummary["invalid"] = [];
   const valid: Array<{ line: number; input: Parameters<typeof validateRateInput>[0] }> = [];
   const seen = new Set<string>();
@@ -439,6 +464,7 @@ export async function importDeliveryRates(
       partnerId,
       serviceable: row.serviceable,
       chargeRupees: row.chargeRupees,
+      remoteSurchargeRupees: storedRemote.get(key) ?? "",
       minOrderRupees: row.minOrderRupees,
       maxOrderRupees: row.maxOrderRupees,
       etaMinDays: row.etaMinDays,
@@ -459,6 +485,9 @@ export async function importDeliveryRates(
         partnerId: value.partnerId,
         serviceable: value.serviceable,
         chargeRupees: row.chargeRupees,
+        remoteSurchargeRupees: storedRemote.get(
+          `${value.pincode}::${value.partnerId}`,
+        ) ?? "",
         minOrderRupees: row.minOrderRupees,
         maxOrderRupees: row.maxOrderRupees,
         etaMinDays: row.etaMinDays,
@@ -485,4 +514,219 @@ export async function importDeliveryRates(
     else updated++;
   }
   return { total: rows.length, valid: valid.length, invalid: [], inserted, updated, skipped: 0 };
+}
+
+// ─── Weight slabs ───────────────────────────────────────────────────
+
+export interface AdminWeightSlab {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  minKg: string;
+  maxKg: string | null;
+  chargePaise: number;
+  createdAt: string;
+}
+
+export async function listWeightSlabs(): Promise<AdminWeightSlab[]> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("delivery_weight_slabs")
+    .select(
+      "id,delivery_partner_id,min_weight_kg,max_weight_kg,charge,created_at," +
+        "delivery_partners!inner(name)",
+    )
+    .order("min_weight_kg", { ascending: true });
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not load weight slabs.", 500);
+  }
+  return ((data ?? []) as unknown as Array<{
+    id: string;
+    delivery_partner_id: string;
+    min_weight_kg: string;
+    max_weight_kg: string | null;
+    charge: string;
+    created_at: string;
+    delivery_partners: { name: string } | null;
+  }>).map((r) => ({
+    id: r.id,
+    partnerId: r.delivery_partner_id,
+    partnerName: r.delivery_partners?.name ?? "—",
+    minKg: r.min_weight_kg,
+    maxKg: r.max_weight_kg,
+    chargePaise: toPaise(r.charge),
+    createdAt: r.created_at,
+  }));
+}
+
+/**
+ * Create a weight band. Overlaps are rejected against the partner's
+ * live bands (same rule the engine relies on for determinism), so
+ * ambiguous configurations are structurally impossible.
+ */
+export async function createWeightSlab(input: SlabFormInput): Promise<{ id: string }> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data: partner, error: partnerError } = await client
+    .from("delivery_partners")
+    .select("id")
+    .eq("id", input.partnerId)
+    .maybeSingle();
+  if (partnerError || !partner) {
+    throw new AppError("VALIDATION_ERROR", "Selected partner does not exist.", 422);
+  }
+  const { data: siblings, error: siblingError } = await client
+    .from("delivery_weight_slabs")
+    .select("min_weight_kg,max_weight_kg")
+    .eq("delivery_partner_id", input.partnerId);
+  if (siblingError) {
+    throw new AppError("INTERNAL_ERROR", "Could not check existing bands.", 500);
+  }
+  const existing: SlabBand[] = ((siblings ?? []) as unknown as Array<{
+    min_weight_kg: string;
+    max_weight_kg: string | null;
+  }>).map((r) => ({
+    minKg: Number(r.min_weight_kg),
+    maxKg: r.max_weight_kg === null ? null : Number(r.max_weight_kg),
+  }));
+  const { errors, value } = validateSlabInput(input, existing);
+  if (!value) {
+    throw new AppError("VALIDATION_ERROR", "Slab details are invalid.", 422, errors);
+  }
+  const { data, error } = await client
+    .from("delivery_weight_slabs")
+    .insert({
+      delivery_partner_id: value.partnerId,
+      min_weight_kg: value.minKg,
+      max_weight_kg: value.maxKg,
+      charge: rateDecimal(value.chargePaise),
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not create the slab.", 500);
+  }
+  const created = data as unknown as { id: string } | null;
+  if (!created) throw new AppError("INTERNAL_ERROR", "Could not create the slab.", 500);
+  return { id: created.id };
+}
+
+export async function deleteWeightSlab(slabId: string): Promise<void> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("delivery_weight_slabs")
+    .delete()
+    .eq("id", slabId)
+    .select("id");
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not delete the slab.", 500);
+  }
+  if (((data ?? []) as unknown as Array<unknown>).length === 0) {
+    throw new AppError("NOT_FOUND", "Slab not found.", 404);
+  }
+}
+
+/** Id + name catalogue for the quote preview tool (admin view). */
+export async function listDeliveryProducts(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("products")
+    .select("id,name")
+    .order("name", { ascending: true });
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not load products.", 500);
+  }
+  return ((data ?? []) as unknown as Array<{ id: string; name: string }>).map(
+    (p) => ({ id: p.id, name: p.name }),
+  );
+}
+
+// ─── Category handling rules ────────────────────────────────────────
+
+export interface AdminCategoryRule {
+  id: string;
+  category: string;
+  surchargePaise: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export async function listCategoryRules(): Promise<AdminCategoryRule[]> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("delivery_category_rules")
+    .select("id,category,surcharge,note,created_at")
+    .order("category", { ascending: true });
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not load category rules.", 500);
+  }
+  return ((data ?? []) as unknown as Array<{
+    id: string;
+    category: string;
+    surcharge: string;
+    note: string | null;
+    created_at: string;
+  }>).map((r) => ({
+    id: r.id,
+    category: r.category,
+    surchargePaise: toPaise(r.surcharge),
+    note: r.note,
+    createdAt: r.created_at,
+  }));
+}
+
+/** One rule per category (UNIQUE) — no ambiguity by construction. */
+export async function createCategoryRule(
+  input: CategoryRuleFormInput,
+): Promise<{ id: string }> {
+  await requireAdmin();
+  const { errors, value } = validateCategoryRuleInput(input);
+  if (!value) {
+    throw new AppError("VALIDATION_ERROR", "Rule details are invalid.", 422, errors);
+  }
+  const client = await createClient();
+  const { data, error } = await client
+    .from("delivery_category_rules")
+    .insert({
+      category: value.category,
+      surcharge: rateDecimal(value.surchargePaise),
+      note: value.note,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    if (isUniqueViolation(error)) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "A rule for that category already exists.",
+        422,
+      );
+    }
+    throw new AppError("INTERNAL_ERROR", "Could not create the rule.", 500);
+  }
+  const created = data as unknown as { id: string } | null;
+  if (!created) throw new AppError("INTERNAL_ERROR", "Could not create the rule.", 500);
+  return { id: created.id };
+}
+
+export async function deleteCategoryRule(ruleId: string): Promise<void> {
+  await requireAdmin();
+  const client = await createClient();
+  const { data, error } = await client
+    .from("delivery_category_rules")
+    .delete()
+    .eq("id", ruleId)
+    .select("id");
+  if (error) {
+    throw new AppError("INTERNAL_ERROR", "Could not delete the rule.", 500);
+  }
+  if (((data ?? []) as unknown as Array<unknown>).length === 0) {
+    throw new AppError("NOT_FOUND", "Rule not found.", 404);
+  }
 }

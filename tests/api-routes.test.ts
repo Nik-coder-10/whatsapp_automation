@@ -56,6 +56,12 @@ describe("POST /api/delivery/check", () => {
       if (op.table === "delivery_pincode_rates") {
         return { rows: [rateRow("450.00")], error: null };
       }
+      if (op.table === "delivery_weight_slabs") {
+        return { rows: [], error: null };
+      }
+      if (op.table === "delivery_category_rules") {
+        return { rows: [], error: null };
+      }
       throw new Error("unreachable");
     };
     const res = await call(deliveryPost, {
@@ -77,6 +83,12 @@ describe("POST /api/delivery/check", () => {
   it("reports unknown pincodes as unserviceable, not errors", async () => {
     serverHandler = (op) => {
       if (op.table === "delivery_pincode_rates") {
+        return { rows: [], error: null };
+      }
+      if (op.table === "delivery_weight_slabs") {
+        return { rows: [], error: null };
+      }
+      if (op.table === "delivery_category_rules") {
         return { rows: [], error: null };
       }
       throw new Error("unreachable");

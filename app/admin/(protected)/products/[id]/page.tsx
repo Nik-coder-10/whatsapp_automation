@@ -75,6 +75,19 @@ export default async function AdminProductPage({
                 )}
               </p>
               <p className="mt-1 text-xs text-zinc-500">
+                Weight:{" "}
+                {product.weightKg !== null ? (
+                  <span className="font-semibold text-zinc-800">
+                    {Number(product.weightKg).toLocaleString("en-IN", {
+                      maximumFractionDigits: 3,
+                    })}{" "}
+                    kg / unit
+                  </span>
+                ) : (
+                  "unknown (weight slabs skipped)"
+                )}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
                 Stock:{" "}
                 <span className="font-semibold text-zinc-800">
                   {product.available} sellable
@@ -111,6 +124,7 @@ export default async function AdminProductPage({
                 lowStockThreshold: product.lowStockThreshold,
                 isActive: product.isActive,
                 gstRate: product.gstRate ?? "",
+                weightKg: product.weightKg ?? "",
               }}
               submitLabel="Save changes"
               endpoint={`/api/admin/products/${product.id}`}

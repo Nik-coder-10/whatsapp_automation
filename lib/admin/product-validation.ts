@@ -21,6 +21,8 @@ export interface ProductFormInput {
   isActive: boolean;
   /** GST percent as typed ("", "5", "18"); blank = not configured. */
   gstRate: string;
+  /** Shipping weight in kg as typed ("", "12.5"); blank = unknown. */
+  weightKg: string;
 }
 
 export type ProductField =
@@ -33,7 +35,8 @@ export type ProductField =
   | "specificationsJson"
   | "stockQuantity"
   | "lowStockThreshold"
-  | "gstRate";
+  | "gstRate"
+  | "weightKg";
 
 export type ProductFormErrors = Partial<Record<ProductField, string>>;
 
@@ -51,11 +54,14 @@ export interface ValidProduct {
   isActive: boolean;
   /** NUMERIC(5,2) decimal string; NULL = GST not configured (0%). */
   gstRate: string | null;
+  /** NUMERIC(10,3) decimal string; NULL = weight unknown. */
+  weightKg: string | null;
 }
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PRICE_RE = /^\d+(?:\.\d{1,2})?$/;
 const RATE_RE = /^\d+(?:\.\d{1,2})?$/;
+const WEIGHT_RE = /^\d+(?:\.\d{1,3})?$/;
 
 export function normalizeSlug(value: string): string {
   return value
@@ -143,6 +149,21 @@ export function validateProductInput(
     }
   }
 
+  // Shipping weight: blank = unknown (weight slabs are skipped, never
+  // guessed). Otherwise up to 100000 kg with at most 3 decimals,
+  // stored NUMERIC(10,3).
+  const weightRaw = input.weightKg.trim().replace(/kg$/, "").trim();
+  let weightKg: string | null = null;
+  if (weightRaw !== "") {
+    const weightNum = WEIGHT_RE.test(weightRaw) ? Number(weightRaw) : NaN;
+    if (!Number.isFinite(weightNum) || weightNum <= 0 || weightNum > 100000) {
+      errors.weightKg =
+        "Weight must be blank or 0–100000 kg (max 3 decimals).";
+    } else {
+      weightKg = weightNum.toFixed(3);
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors, value: null };
   }
@@ -160,6 +181,7 @@ export function validateProductInput(
       lowStockThreshold: input.lowStockThreshold,
       isActive: input.isActive,
       gstRate,
+      weightKg,
     },
   };
 }

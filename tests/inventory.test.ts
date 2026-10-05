@@ -216,6 +216,8 @@ describe("atomic order path (race loser fails safe)", () => {
     deliveryPartnerId: "d1",
     deliveryPartnerName: "Delhivery",
     deliveryChargePaise: 45000,
+    deliveryWeightKg: null,
+    deliveryRuleSummary: null,
     totalPaise: 629900 * qty + 45000,
     pincode: "400001",
   });
@@ -359,6 +361,7 @@ describe("admin stock controls (audited adjustments)", () => {
     lowStockThreshold: 3,
     isActive: true,
     gstRate: "",
+    weightKg: "",
   };
 
   it("logs manual stock changes with signed deltas", async () => {

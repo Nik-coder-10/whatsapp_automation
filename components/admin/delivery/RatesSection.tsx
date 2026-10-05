@@ -163,6 +163,11 @@ export function RatesSection({
                       </td>
                       <td className="py-2.5 pr-3 font-semibold whitespace-nowrap text-zinc-900">
                         {formatMoney({ amountPaise: r.chargePaise, currency: "INR" })}
+                        {r.remoteSurchargePaise > 0 ? (
+                          <span className="block text-xs font-normal text-zinc-500">
+                            +{formatMoney({ amountPaise: r.remoteSurchargePaise, currency: "INR" })} remote
+                          </span>
+                        ) : null}
                       </td>
                       <td className="py-2.5 pr-3 text-xs text-zinc-500">
                         {r.minOrderPaise !== null || r.maxOrderPaise !== null

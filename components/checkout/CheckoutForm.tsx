@@ -140,12 +140,20 @@ export function CheckoutForm() {
     setErrors((e) => ({ ...e, pincode: undefined }));
     setDelivery({ status: "checking" });
     try {
-      // Server decides serviceability, partner and charge from the
-      // cart subtotal — the browser only displays the verdict.
+      // Server decides serviceability, partner and charge from live
+      // cart lines (IDs + quantities only) — the browser only
+      // displays the verdict.
       const res = await fetch("/api/delivery/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pincode, subtotalPaise }),
+        body: JSON.stringify({
+          pincode,
+          subtotalPaise,
+          items: items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+          })),
+        }),
       });
       const json = (await res.json()) as ApiResponse<DeliveryQuote>;
       if (!json.ok) {
@@ -504,6 +512,21 @@ export function CheckoutForm() {
                     <p className="mt-1 text-xs">
                       {delivery.result.options.length} partner options — best
                       value selected for this order.
+                    </p>
+                  ) : null}
+                  {delivery.result.totalWeightKg !== null ||
+                  delivery.result.appliedRules.length > 0 ? (
+                    <p className="mt-1 text-xs">
+                      {delivery.result.totalWeightKg !== null
+                        ? `Shipment ~${delivery.result.totalWeightKg.toLocaleString("en-IN", { maximumFractionDigits: 3 })} kg`
+                        : null}
+                      {delivery.result.totalWeightKg !== null &&
+                      delivery.result.appliedRules.length > 0
+                        ? " · "
+                        : null}
+                      {delivery.result.appliedRules.length > 0
+                        ? delivery.result.appliedRules.join(" + ")
+                        : null}
                     </p>
                   ) : null}
                 </Alert>

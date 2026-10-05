@@ -49,6 +49,7 @@ export function coerceRateInput(body: unknown): RateFormInput {
     partnerId: String(r["partnerId"] ?? ""),
     serviceable: r["serviceable"] !== false,
     chargeRupees: String(r["chargeRupees"] ?? ""),
+    remoteSurchargeRupees: String(r["remoteSurchargeRupees"] ?? ""),
     minOrderRupees: String(r["minOrderRupees"] ?? ""),
     maxOrderRupees: String(r["maxOrderRupees"] ?? ""),
     etaMinDays: String(r["etaMinDays"] ?? ""),
