@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_BILLING_FORM,
   EMPTY_CHECKOUT_FORM,
   normalizeCheckoutForm,
   validateCheckoutForm,
@@ -11,6 +12,8 @@ const VALID = {
   email: "",
   gstin: "",
   pincode: "400001",
+  customerType: "individual" as const,
+  billing: { ...EMPTY_BILLING_FORM },
 };
 
 describe("checkout validation", () => {
@@ -74,6 +77,14 @@ describe("checkout validation", () => {
       email: "",
       gstin: "",
       pincode: "",
+      customerType: "individual",
+      billing: {
+        name: "",
+        addressLine: "",
+        city: "",
+        stateCode: "",
+        pincode: "",
+      },
     });
   });
 

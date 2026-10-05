@@ -10,9 +10,9 @@ import { fetchOrderSummary, persistOrder } from "@/lib/orders/create";
  *
  * Server-authoritative flow:
  *   validate input → fetch live products → verify active → validate
- *   quantities → subtotal → validate GSTIN/pincode → delivery engine →
- *   partner + charge → total → customer upsert → order + items +
- *   pending payment (one atomic RPC) → safe summary.
+ *   quantities → subtotal → validate GSTIN/billing/pincode → GST engine
+ *   → delivery engine → partner + charge → total → customer upsert →
+ *   order + items + pending payment (one atomic RPC) → safe summary.
  *
  * The body carries IDs, quantities, customer details, pincode and an
  * idempotency key — and nothing else. Prices, charges, totals, partner
@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     const quote = await quoteOrder({
       items: parsed.items,
       pincode: parsed.pincode,
+      billing: parsed.billing,
     });
     const persisted = await persistOrder({
       idempotencyKey: parsed.idempotencyKey,

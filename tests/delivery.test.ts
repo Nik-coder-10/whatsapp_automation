@@ -76,9 +76,9 @@ describe("withinOrderWindow", () => {
 });
 
 const PRODUCTS = [
-  { id: "p1", name: "Trolley", price: "6299.00", is_active: true },
-  { id: "p2", name: "Stacker", price: "285000.00", is_active: true },
-  { id: "p3", name: "Retired", price: "100.00", is_active: false },
+  { id: "p1", name: "Trolley", price: "6299.00", gst_rate: "18.00", is_active: true },
+  { id: "p2", name: "Stacker", price: "285000.00", gst_rate: null, is_active: true },
+  { id: "p3", name: "Retired", price: "100.00", gst_rate: null, is_active: false },
 ];
 
 describe("priceOrderLines (server authority: ids + quantities only)", () => {
@@ -94,6 +94,8 @@ describe("priceOrderLines (server authority: ids + quantities only)", () => {
         quantity: 2,
         unitPricePaise: 629900,
         lineTotalPaise: 1259800,
+        gstRate: "18.00",
+        lineTaxPaise: 226764,
       },
       {
         productId: "p2",
@@ -101,6 +103,8 @@ describe("priceOrderLines (server authority: ids + quantities only)", () => {
         quantity: 1,
         unitPricePaise: 28500000,
         lineTotalPaise: 28500000,
+        gstRate: null,
+        lineTaxPaise: 0,
       },
     ]);
     // subtotal + delivery = total holds in integers (delivery e.g. 45000).

@@ -55,6 +55,7 @@ const INPUT: ProductFormInput = {
   specificationsJson: '{"capacity_kg": 500}',
   stockQuantity: 10,
   isActive: true,
+  gstRate: "18",
 };
 
 const routePost = (
@@ -84,6 +85,23 @@ describe("validateProductInput", () => {
     expect(value?.pricePaise).toBe(629900);
     expect(value?.slug).toBe("test-trolley");
     expect(value?.specifications).toEqual({ capacity_kg: 500 });
+    expect(value?.gstRate).toBe("18.00");
+  });
+
+  it("accepts a blank GST rate as not-configured and rejects bad rates", () => {
+    expect(validateProductInput({ ...INPUT, gstRate: "" }).value?.gstRate).toBeNull();
+    expect(
+      validateProductInput({ ...INPUT, gstRate: "101" }).errors.gstRate,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, gstRate: "12.999" }).errors.gstRate,
+    ).toBeTruthy();
+    expect(
+      validateProductInput({ ...INPUT, gstRate: "-5" }).errors.gstRate,
+    ).toBeTruthy();
+    expect(validateProductInput({ ...INPUT, gstRate: " 5 " }).value?.gstRate).toBe(
+      "5.00",
+    );
   });
 
   it("rejects bad name, slug, price, category and stock", () => {

@@ -64,6 +64,16 @@ export default async function AdminProductPage({
               <div className="mt-1">
                 <PriceDisplay amountPaise={product.pricePaise} size="md" />
               </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                GST rate:{" "}
+                {product.gstRate !== null ? (
+                  <span className="font-semibold text-zinc-800">
+                    {Number(product.gstRate).toLocaleString("en-IN")}% (exclusive)
+                  </span>
+                ) : (
+                  "not configured (0%)"
+                )}
+              </p>
             </div>
             {product.isActive ? (
               <Badge tone="success">Active</Badge>
@@ -89,6 +99,7 @@ export default async function AdminProductPage({
                 specificationsJson: JSON.stringify(product.specifications, null, 2),
                 stockQuantity: product.stockQuantity,
                 isActive: product.isActive,
+                gstRate: product.gstRate ?? "",
               }}
               submitLabel="Save changes"
               endpoint={`/api/admin/products/${product.id}`}

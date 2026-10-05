@@ -9,6 +9,8 @@ import {
   normalizeGstin,
   normalizePhone,
 } from "@/lib/validations/common";
+import { validateBillingProfile } from "@/lib/checkout/validation";
+import { INDIAN_STATES } from "@/lib/tax/india";
 
 /**
  * Admin customer management (server-only, admins only).
@@ -64,6 +66,15 @@ export interface AdminCustomerRow {
   latestOrderAt: string | null;
 }
 
+export interface AdminCustomerBilling {
+  name: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  stateCode: string | null;
+  pincode: string | null;
+}
+
 export interface AdminCustomerDetail {
   customer: {
     id: string;
@@ -72,6 +83,8 @@ export interface AdminCustomerDetail {
     email: string | null;
     gstin: string | null;
     createdAt: string;
+    /** Reusable billing master; editing never touches past orders. */
+    billing: AdminCustomerBilling;
   };
   summary: {
     orderCount: number;
@@ -181,8 +194,37 @@ export async function getAdminCustomer(
     p_customer_id: customerId,
   });
   if (!result.customer) return null;
+  // Billing master lives on the customers row (single fetch, same admin
+  // client). Missing columns/rows degrade to an empty profile — the RPC
+  // summary above remains the source of truth for identity.
+  const { data: profile } = await client
+    .from("customers")
+    .select(
+      "billing_name,billing_address_line,billing_city,billing_state," +
+        "billing_state_code,billing_pincode",
+    )
+    .eq("id", customerId)
+    .maybeSingle();
+  const p = (profile ?? {}) as unknown as {
+    billing_name?: string | null;
+    billing_address_line?: string | null;
+    billing_city?: string | null;
+    billing_state?: string | null;
+    billing_state_code?: string | null;
+    billing_pincode?: string | null;
+  };
   return {
-    customer: result.customer,
+    customer: {
+      ...result.customer,
+      billing: {
+        name: p.billing_name ?? null,
+        addressLine: p.billing_address_line ?? null,
+        city: p.billing_city ?? null,
+        state: p.billing_state ?? null,
+        stateCode: p.billing_state_code ?? null,
+        pincode: p.billing_pincode ?? null,
+      },
+    },
     summary: {
       orderCount: result.summary?.order_count ?? 0,
       paidCount: result.summary?.paid_count ?? 0,
@@ -207,6 +249,11 @@ export interface CustomerEditInput {
   phone: string;
   email: string;
   gstin: string;
+  billingName: string;
+  billingAddressLine: string;
+  billingCity: string;
+  billingStateCode: string;
+  billingPincode: string;
 }
 
 /**
@@ -234,6 +281,28 @@ export async function updateAdminCustomer(
   if (!isValidGstin(gstin)) {
     throw new AppError("VALIDATION_ERROR", "GSTIN must be valid or blank.", 422);
   }
+  // Billing master: all-blank clears the profile; any content must form
+  // a complete profile (same rule as checkout). The state name derives
+  // server-side from the code — never trusted from the client.
+  const billingForm = {
+    name: input.billingName,
+    addressLine: input.billingAddressLine,
+    city: input.billingCity,
+    stateCode: input.billingStateCode.trim(),
+    pincode: input.billingPincode,
+  };
+  const billingBlank =
+    billingForm.name.trim() === "" &&
+    billingForm.addressLine.trim() === "" &&
+    billingForm.city.trim() === "" &&
+    billingForm.stateCode === "" &&
+    billingForm.pincode.trim() === "";
+  const billingProblem = billingBlank
+    ? null
+    : validateBillingProfile(billingForm);
+  if (billingProblem) {
+    throw new AppError("VALIDATION_ERROR", billingProblem, 422);
+  }
   const client = await createClient();
   const { data, error } = await client
     .from("customers")
@@ -242,6 +311,14 @@ export async function updateAdminCustomer(
       phone,
       email: email === "" ? null : email,
       gstin: gstin === "" ? null : normalizeGstin(gstin),
+      billing_name: billingBlank ? null : billingForm.name.trim(),
+      billing_address_line: billingBlank ? null : billingForm.addressLine.trim(),
+      billing_city: billingBlank ? null : billingForm.city.trim(),
+      billing_state: billingBlank
+        ? null
+        : (INDIAN_STATES.find((s) => s.code === billingForm.stateCode)?.name ?? null),
+      billing_state_code: billingBlank ? null : billingForm.stateCode,
+      billing_pincode: billingBlank ? null : billingForm.pincode.trim(),
     })
     .eq("id", customerId)
     .select("id");

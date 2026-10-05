@@ -200,13 +200,36 @@ export async function listAdminOrders(
   };
 }
 
+export interface AdminOrderBilling {
+  name: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  stateCode: string | null;
+  pincode: string | null;
+}
+
 export interface AdminOrderDetail {
   id: string;
   orderNumber: string;
   createdAt: string;
   customer: { name: string; phone: string; email: string | null; gstin: string | null };
-  items: Array<{ name: string; quantity: number; unitPricePaise: number; lineTotalPaise: number }>;
+  /** Frozen order-time billing snapshot (null fields when non-GST). */
+  billing: AdminOrderBilling;
+  items: Array<{
+    name: string;
+    quantity: number;
+    unitPricePaise: number;
+    lineTotalPaise: number;
+    gstRate: string | null;
+    lineTaxPaise: number;
+  }>;
   subtotalPaise: number;
+  taxTreatment: string;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
   deliveryChargePaise: number;
   totalPaise: number;
   deliveryPincode: string;
@@ -234,6 +257,9 @@ export async function getAdminOrderDetail(
     .select(
       "id,order_number,created_at,subtotal,delivery_charge,total_amount," +
         "delivery_pincode,delivery_partner_name,gstin_snapshot," +
+        "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
+        "billing_name,billing_address_line,billing_city,billing_state," +
+        "billing_state_code,billing_pincode," +
         "payment_status,order_status,customer_id," +
         "customers!inner(name,phone,email,gstin)",
     )
@@ -249,6 +275,17 @@ export async function getAdminOrderDetail(
     delivery_pincode: string;
     delivery_partner_name: string;
     gstin_snapshot: string | null;
+    tax_treatment: string;
+    taxable_amount: string;
+    cgst_amount: string;
+    sgst_amount: string;
+    igst_amount: string;
+    billing_name: string | null;
+    billing_address_line: string | null;
+    billing_city: string | null;
+    billing_state: string | null;
+    billing_state_code: string | null;
+    billing_pincode: string | null;
     payment_status: PaymentStatus;
     order_status: OrderStatus;
     customers: { name: string; phone: string; email: string | null; gstin: string | null } | null;
@@ -258,7 +295,7 @@ export async function getAdminOrderDetail(
   const [{ data: items }, { data: payment }, { data: events }] = await Promise.all([
     client
       .from("order_items")
-      .select("product_name,quantity,unit_price,line_total")
+      .select("product_name,quantity,unit_price,line_total,gst_rate_percent,line_tax_amount")
       .eq("order_id", o.id)
       .order("product_name"),
     client
@@ -280,6 +317,8 @@ export async function getAdminOrderDetail(
     quantity: number;
     unit_price: string;
     line_total: string;
+    gst_rate_percent: string | null;
+    line_tax_amount: string;
   }>;
   const payRow = payment as unknown as {
     transaction_reference: string | null;
@@ -302,13 +341,28 @@ export async function getAdminOrderDetail(
       email: o.customers?.email ?? null,
       gstin: o.gstin_snapshot,
     },
+    billing: {
+      name: o.billing_name,
+      addressLine: o.billing_address_line,
+      city: o.billing_city,
+      state: o.billing_state,
+      stateCode: o.billing_state_code,
+      pincode: o.billing_pincode,
+    },
     items: itemRows.map((r) => ({
       name: r.product_name,
       quantity: r.quantity,
       unitPricePaise: toPaise(r.unit_price),
       lineTotalPaise: toPaise(r.line_total),
+      gstRate: r.gst_rate_percent,
+      lineTaxPaise: toPaise(r.line_tax_amount),
     })),
     subtotalPaise: toPaise(o.subtotal),
+    taxTreatment: o.tax_treatment,
+    taxablePaise: toPaise(o.taxable_amount),
+    cgstPaise: toPaise(o.cgst_amount),
+    sgstPaise: toPaise(o.sgst_amount),
+    igstPaise: toPaise(o.igst_amount),
     deliveryChargePaise: toPaise(o.delivery_charge),
     totalPaise: toPaise(o.total_amount),
     deliveryPincode: o.delivery_pincode,

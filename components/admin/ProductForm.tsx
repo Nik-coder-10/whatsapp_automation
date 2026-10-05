@@ -141,6 +141,16 @@ export function ProductForm({
           error={errors.stockQuantity}
         />
       </div>
+      <Input
+        label="GST rate % (optional)"
+        name="gstRate"
+        inputMode="decimal"
+        placeholder="e.g. 18"
+        value={form.gstRate}
+        onChange={(e) => set("gstRate", e.target.value)}
+        error={errors.gstRate}
+        hint="Blank = GST not configured (0% on GST orders). Catalogue prices are GST-exclusive."
+      />
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-semibold text-zinc-800">
           Images (paths, up to 10)

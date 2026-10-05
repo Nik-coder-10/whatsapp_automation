@@ -2,18 +2,26 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { AppError } from "@/lib/api/errors";
 import { quoteDelivery } from "@/lib/delivery/engine";
+import {
+  computeOrderTax,
+  getBusinessStateCode,
+  lineTaxPaise,
+  type OrderTax,
+} from "@/lib/tax/india";
 
 /**
  * Server-side order pricing (server-only).
  *
- * Accepts ONLY product IDs, quantities and a pincode — never prices,
- * charges or totals. Every rupee below is recomputed from trusted
- * product rows plus the delivery engine, so client-submitted money is
- * structurally impossible to honour.
+ * Accepts ONLY product IDs, quantities, pincode and (optional) billing
+ * identity — never prices, rates, charges or totals. Every rupee below
+ * is recomputed from trusted product rows, the GST engine and the
+ * delivery engine, so client-submitted money is structurally
+ * impossible to honour.
  *
- *   subtotal = Σ(unit_price × quantity)      (integer paise)
+ *   subtotal = Σ(unit_price × quantity)      (integer paise, ex-GST)
+ *   tax      = GST engine over live product rates (paise-exact)
  *   delivery = delivery_engine(pincode, subtotal)
- *   total    = subtotal + delivery
+ *   total    = subtotal + tax + delivery
  */
 
 export interface OrderLineInput {
@@ -28,11 +36,27 @@ export interface PricedOrderLine {
   /** Integer paise snapshot from the live product row. */
   unitPricePaise: number;
   lineTotalPaise: number;
+  /** GST percent snapshot (decimal string) for the invoice. */
+  gstRate: string | null;
+  /** Integer paise line GST (same rounding as the order engine). */
+  lineTaxPaise: number;
+}
+
+export interface BillingInput {
+  gstin: string | null;
+  stateCode: string | null;
+  name: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
 }
 
 export interface OrderQuote {
   lines: PricedOrderLine[];
   subtotalPaise: number;
+  tax: OrderTax;
+  billing: BillingInput;
   deliveryPartnerId: string;
   deliveryPartnerName: string;
   deliveryChargePaise: number;
@@ -44,6 +68,7 @@ interface ProductRow {
   id: string;
   name: string;
   price: string;
+  gst_rate: string | null;
   is_active: boolean;
 }
 
@@ -88,12 +113,15 @@ export function priceOrderLines(
     if (!Number.isFinite(unitPricePaise) || unitPricePaise < 0) {
       throw new AppError("INTERNAL_ERROR", "Invalid product price.", 500);
     }
+    const lineTotalPaise = unitPricePaise * item.quantity;
     return {
       productId: product.id,
       productName: product.name,
       quantity: item.quantity,
       unitPricePaise,
-      lineTotalPaise: unitPricePaise * item.quantity,
+      lineTotalPaise,
+      gstRate: product.gst_rate,
+      lineTaxPaise: lineTaxPaise(lineTotalPaise, product.gst_rate),
     };
   });
 }
@@ -105,12 +133,13 @@ export function priceOrderLines(
 export async function quoteOrder(input: {
   items: OrderLineInput[];
   pincode: string;
+  billing?: BillingInput | null;
 }): Promise<OrderQuote> {
   const supabase = await createClient();
   const ids = [...new Set(input.items.map((i) => i.productId))];
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,price,is_active")
+    .select("id,name,price,gst_rate,is_active")
     .in("id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"]);
   if (error) {
     throw new AppError(
@@ -125,6 +154,25 @@ export async function quoteOrder(input: {
   );
   const subtotalPaise = lines.reduce((n, l) => n + l.lineTotalPaise, 0);
 
+  const billing: BillingInput = {
+    gstin: input.billing?.gstin ?? null,
+    stateCode: input.billing?.stateCode ?? null,
+    name: input.billing?.name ?? null,
+    addressLine: input.billing?.addressLine ?? null,
+    city: input.billing?.city ?? null,
+    state: input.billing?.state ?? null,
+    pincode: input.billing?.pincode ?? null,
+  };
+  const tax = computeOrderTax({
+    lines: lines.map((l) => ({
+      lineTotalPaise: l.lineTotalPaise,
+      gstRate: l.gstRate,
+    })),
+    gstin: billing.gstin,
+    customerStateCode: billing.stateCode,
+    businessStateCode: getBusinessStateCode(),
+  });
+
   const delivery = await quoteDelivery(input.pincode, subtotalPaise);
   if (!delivery.serviceable || !delivery.selected) {
     throw new AppError(
@@ -136,10 +184,13 @@ export async function quoteOrder(input: {
   return {
     lines,
     subtotalPaise,
+    tax,
+    billing,
     deliveryPartnerId: delivery.selected.partner.id,
     deliveryPartnerName: delivery.selected.partner.name,
     deliveryChargePaise: delivery.selected.deliveryChargePaise,
-    totalPaise: subtotalPaise + delivery.selected.deliveryChargePaise,
+    totalPaise:
+      subtotalPaise + tax.totalGstPaise + delivery.selected.deliveryChargePaise,
     pincode: delivery.pincode,
   };
 }

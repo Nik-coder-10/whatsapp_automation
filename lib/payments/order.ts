@@ -23,11 +23,22 @@ export interface ShipmentTracking {
   estimatedDeliveryDate: string | null;
 }
 
+export interface OrderTaxBreakdown {
+  treatment: string;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
+}
+
 export interface PayableOrder {
   id: string;
   orderNumber: string;
   customerName: string;
   customerPhone: string | null;
+  billingName: string | null;
+  gstinSnapshot: string | null;
+  tax: OrderTaxBreakdown;
   /** Shipment tracking (courier integration phase; null until then). */
   tracking: ShipmentTracking | null;
   orderStatus: OrderStatus;
@@ -37,7 +48,6 @@ export interface PayableOrder {
   totalPaise: number;
   deliveryPincode: string;
   deliveryPartnerName: string;
-  gstinSnapshot: string | null;
   items: PayableOrderItem[];
   paymentReference: string | null;
   createdAt: string;
@@ -57,7 +67,8 @@ export async function getPayableOrder(
     .select(
       "id,order_number,customer_id,subtotal,delivery_charge,total_amount," +
         "delivery_pincode,delivery_partner_name,gstin_snapshot," +
-        "payment_status,order_status,created_at",
+        "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
+        "billing_name,payment_status,order_status,created_at",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -71,6 +82,12 @@ export async function getPayableOrder(
     delivery_pincode: string;
     delivery_partner_name: string;
     gstin_snapshot: string | null;
+    tax_treatment: string;
+    taxable_amount: string;
+    cgst_amount: string;
+    sgst_amount: string;
+    igst_amount: string;
+    billing_name: string | null;
     payment_status: PaymentStatus;
     order_status: OrderStatus;
     created_at: string;
@@ -118,6 +135,14 @@ export async function getPayableOrder(
     deliveryPincode: o.delivery_pincode,
     deliveryPartnerName: o.delivery_partner_name,
     gstinSnapshot: o.gstin_snapshot,
+    billingName: o.billing_name,
+    tax: {
+      treatment: o.tax_treatment,
+      taxablePaise: toPaise(o.taxable_amount),
+      cgstPaise: toPaise(o.cgst_amount),
+      sgstPaise: toPaise(o.sgst_amount),
+      igstPaise: toPaise(o.igst_amount),
+    },
     subtotalPaise: toPaise(o.subtotal),
     deliveryChargePaise: toPaise(o.delivery_charge),
     totalPaise: toPaise(o.total_amount),

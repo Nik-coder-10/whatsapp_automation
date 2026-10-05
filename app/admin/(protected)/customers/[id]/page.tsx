@@ -120,6 +120,13 @@ export default async function AdminCustomerPage({
                   phone: detail.customer.phone,
                   email: detail.customer.email ?? "",
                   gstin: detail.customer.gstin ?? "",
+                  billing: {
+                    name: detail.customer.billing.name ?? "",
+                    addressLine: detail.customer.billing.addressLine ?? "",
+                    city: detail.customer.billing.city ?? "",
+                    stateCode: detail.customer.billing.stateCode ?? "",
+                    pincode: detail.customer.billing.pincode ?? "",
+                  },
                 }}
               />
             </div>

@@ -182,6 +182,39 @@ export default async function OrderPage({
                   <PriceDisplay amountPaise={order.subtotalPaise} size="sm" />
                 </dd>
               </div>
+              {order.tax.treatment === "gst" ? (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-600">Taxable amount</dt>
+                    <dd className="font-semibold text-zinc-900">
+                      <PriceDisplay amountPaise={order.tax.taxablePaise} size="sm" />
+                    </dd>
+                  </div>
+                  {order.tax.cgstPaise > 0 || order.tax.sgstPaise > 0 ? (
+                    <>
+                      <div className="flex justify-between">
+                        <dt className="text-zinc-600">CGST</dt>
+                        <dd className="font-semibold text-zinc-900">
+                          <PriceDisplay amountPaise={order.tax.cgstPaise} size="sm" />
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-zinc-600">SGST</dt>
+                        <dd className="font-semibold text-zinc-900">
+                          <PriceDisplay amountPaise={order.tax.sgstPaise} size="sm" />
+                        </dd>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <dt className="text-zinc-600">IGST</dt>
+                      <dd className="font-semibold text-zinc-900">
+                        <PriceDisplay amountPaise={order.tax.igstPaise} size="sm" />
+                      </dd>
+                    </div>
+                  )}
+                </>
+              ) : null}
               <div className="flex justify-between">
                 <dt className="text-zinc-600">Delivery ({order.deliveryPartnerName})</dt>
                 <dd className="font-semibold text-zinc-900">
@@ -217,10 +250,18 @@ export default async function OrderPage({
                 <dd className="font-semibold text-zinc-900">{order.deliveryPartnerName}</dd>
               </div>
               {order.gstinSnapshot ? (
-                <div>
-                  <dt className="text-zinc-500">GSTIN</dt>
-                  <dd className="font-semibold text-zinc-900">{order.gstinSnapshot}</dd>
-                </div>
+                <>
+                  <div>
+                    <dt className="text-zinc-500">GSTIN (customer-provided)</dt>
+                    <dd className="font-semibold text-zinc-900">{order.gstinSnapshot}</dd>
+                  </div>
+                  {order.billingName ? (
+                    <div>
+                      <dt className="text-zinc-500">Billed to</dt>
+                      <dd className="font-semibold text-zinc-900">{order.billingName}</dd>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </dl>
           </section>

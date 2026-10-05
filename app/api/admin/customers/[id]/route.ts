@@ -37,11 +37,22 @@ export async function PATCH(
       return badRequest("Customer details are required.");
     }
     const r = body as Record<string, unknown>;
+    // Full-replacement like the contact fields: absent billing clears
+    // the profile. The admin form always sends the complete profile.
+    const b =
+      typeof r["billing"] === "object" && r["billing"] !== null
+        ? (r["billing"] as Record<string, unknown>)
+        : {};
     await updateAdminCustomer(id, {
       name: String(r["name"] ?? ""),
       phone: String(r["phone"] ?? ""),
       email: String(r["email"] ?? ""),
       gstin: String(r["gstin"] ?? ""),
+      billingName: String(b["name"] ?? ""),
+      billingAddressLine: String(b["addressLine"] ?? ""),
+      billingCity: String(b["city"] ?? ""),
+      billingStateCode: String(b["stateCode"] ?? ""),
+      billingPincode: String(b["pincode"] ?? ""),
     });
     return ok({ id });
   } catch (error) {

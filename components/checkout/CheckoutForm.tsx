@@ -11,11 +11,15 @@ import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { EmptyState } from "@/components/ui/States";
 import { formatMoney } from "@/lib/orders/pricing";
 import {
+  EMPTY_BILLING_FORM,
   EMPTY_CHECKOUT_FORM,
   validateCheckoutForm,
+  type BillingFormData,
   type CheckoutErrors,
+  type CheckoutField,
   type CheckoutFormData,
 } from "@/lib/checkout/validation";
+import { INDIAN_STATES } from "@/lib/tax/india";
 import { isValidPincode, normalizePincode } from "@/lib/validations/common";
 import type { ApiResponse } from "@/types/api";
 import type { DeliveryQuote } from "@/lib/delivery/engine";
@@ -77,10 +81,54 @@ export function CheckoutForm() {
   // the same server order instead of duplicating it.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const set = (field: keyof CheckoutFormData, value: string) => {
+  const set = (
+    field: keyof Omit<CheckoutFormData, "billing" | "customerType">,
+    value: string,
+  ) => {
     setForm((f) => ({ ...f, [field]: value }));
     setReviewed(false);
     if (field === "pincode") setDelivery({ status: "idle" });
+  };
+
+  const setBilling = (field: keyof BillingFormData, value: string) => {
+    setForm((f) => ({
+      ...f,
+      billing: { ...f.billing, [field]: value },
+    }));
+    setReviewed(false);
+  };
+
+  const setCustomerType = (customerType: "individual" | "business") => {
+    setForm((f) => ({
+      ...f,
+      customerType,
+      billing:
+        customerType === "business" && f.billing.pincode === ""
+          ? { ...EMPTY_BILLING_FORM, pincode: f.pincode }
+          : f.billing,
+    }));
+    setReviewed(false);
+    setDelivery({ status: "idle" });
+  };
+
+  const focusFirstError = (errs: CheckoutErrors) => {
+    const order: CheckoutField[] = [
+      "name",
+      "phone",
+      "email",
+      "gstin",
+      "billing.name",
+      "billing.addressLine",
+      "billing.city",
+      "billing.stateCode",
+      "billing.pincode",
+      "pincode",
+    ];
+    const first = order.find((f) => errs[f]);
+    if (first) {
+      // Dots are legal in getElementById and match the input ids.
+      document.getElementById(first)?.focus();
+    }
   };
 
   const checkDelivery = async () => {
@@ -127,12 +175,7 @@ export function CheckoutForm() {
     const result = validateCheckoutForm(form, items.length);
     setErrors(result.errors);
     setReviewed(result.valid);
-    if (!result.valid) {
-      const first = (
-        ["name", "phone", "email", "gstin", "pincode"] as const
-      ).find((f) => result.errors[f]);
-      if (first) document.getElementById(first)?.focus();
-    }
+    if (!result.valid) focusFirstError(result.errors);
   };
 
   const placeOrder = async () => {
@@ -140,10 +183,7 @@ export function CheckoutForm() {
     setErrors(result.errors);
     setReviewed(false);
     if (!result.valid) {
-      const first = (
-        ["name", "phone", "email", "gstin", "pincode"] as const
-      ).find((f) => result.errors[f]);
-      if (first) document.getElementById(first)?.focus();
+      focusFirstError(result.errors);
       return;
     }
     if (delivery.status !== "ok") {
@@ -169,6 +209,16 @@ export function CheckoutForm() {
             email: form.email,
             gstin: form.gstin,
           },
+          billing:
+            form.customerType === "business"
+              ? {
+                  name: form.billing.name,
+                  addressLine: form.billing.addressLine,
+                  city: form.billing.city,
+                  stateCode: form.billing.stateCode,
+                  pincode: form.billing.pincode,
+                }
+              : null,
           pincode: form.pincode,
           idempotencyKey,
         }),
@@ -290,17 +340,121 @@ export function CheckoutForm() {
           />
         </Section>
 
-        <Section n="2" title="GST information">
+        <Section n="2" title="Customer type & GST">
+          <fieldset>
+            <legend className="text-sm font-semibold text-zinc-800">
+              Who is this order for?
+            </legend>
+            <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Customer type">
+              {(
+                [
+                  ["individual", "Individual / Non-GST"],
+                  ["business", "Business / GST"],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className={`inline-flex h-11 cursor-pointer items-center rounded-md border px-4 text-sm font-semibold ${
+                    form.customerType === value
+                      ? "border-brand-800 bg-brand-50 text-brand-900"
+                      : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="customer-type"
+                    value={value}
+                    checked={form.customerType === value}
+                    onChange={() => setCustomerType(value)}
+                    className="sr-only"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <Input
-            label="GSTIN (optional)"
+            label={form.customerType === "business" ? "GSTIN" : "GSTIN (optional)"}
             name="gstin"
             autoComplete="off"
             placeholder="15-character GSTIN"
             value={form.gstin}
             onChange={(e) => set("gstin", e.target.value)}
             error={errors.gstin}
-            hint="GST number is optional. Leave blank if you don't need a GST invoice."
+            hint={
+              form.customerType === "business"
+                ? "Format-checked only — not government-verified."
+                : "GST number is optional. Leave blank if you don't need a GST invoice."
+            }
           />
+          {form.customerType === "business" ? (
+            <div className="flex flex-col gap-4 rounded-md border border-zinc-200 bg-zinc-50 p-4">
+              <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                Billing details for the GST invoice
+              </p>
+              <Input
+                label="Legal / business name"
+                name="billing.name"
+                value={form.billing.name}
+                onChange={(e) => setBilling("name", e.target.value)}
+                error={errors["billing.name"]}
+              />
+              <Input
+                label="Billing street address"
+                name="billing.addressLine"
+                value={form.billing.addressLine}
+                onChange={(e) => setBilling("addressLine", e.target.value)}
+                error={errors["billing.addressLine"]}
+              />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Input
+                  label="City"
+                  name="billing.city"
+                  value={form.billing.city}
+                  onChange={(e) => setBilling("city", e.target.value)}
+                  error={errors["billing.city"]}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="billing.stateCode"
+                    className="text-sm font-semibold text-zinc-800"
+                  >
+                    State
+                  </label>
+                  <select
+                    id="billing.stateCode"
+                    name="billing.stateCode"
+                    value={form.billing.stateCode}
+                    onChange={(e) => setBilling("stateCode", e.target.value)}
+                    aria-invalid={errors["billing.stateCode"] ? true : undefined}
+                    className={`h-11 w-full rounded-md border bg-white px-2 text-sm outline-none focus:border-brand-700 ${
+                      errors["billing.stateCode"] ? "border-red-600" : "border-zinc-300"
+                    }`}
+                  >
+                    <option value="">Select state…</option>
+                    {INDIAN_STATES.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors["billing.stateCode"] ? (
+                    <p role="alert" className="text-xs text-red-700">
+                      {errors["billing.stateCode"]}
+                    </p>
+                  ) : null}
+                </div>
+                <Input
+                  label="Billing pincode"
+                  name="billing.pincode"
+                  inputMode="numeric"
+                  value={form.billing.pincode}
+                  onChange={(e) => setBilling("pincode", e.target.value)}
+                  error={errors["billing.pincode"]}
+                />
+              </div>
+            </div>
+          ) : null}
         </Section>
 
         <Section n="3" title="Delivery information">
@@ -415,9 +569,15 @@ export function CheckoutForm() {
           </div>
         </dl>
         <p className="mt-2 text-xs leading-5 text-zinc-500">
-          Informational only — delivery and the final total are confirmed
-          server-side when you place the order.
+          Informational only — GST, delivery and the final total are
+          confirmed server-side when you place the order.
         </p>
+        {form.gstin.trim() !== "" ? (
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            GST invoice requested — tax is calculated from live product
+            rates at order time.
+          </p>
+        ) : null}
         {reviewed ? (
           <Alert tone="success" title="Details look good">
             Your information validates. Place the order when ready — payment
@@ -440,13 +600,6 @@ export function CheckoutForm() {
             loading={placing}
           >
             Place Order
-          </Button>
-          <Button
-            variant="ghost"
-            disabled
-            title="Payment — coming in the payment phase"
-          >
-            Continue to Payment — soon
           </Button>
           <Link
             href="/cart"

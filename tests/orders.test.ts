@@ -98,7 +98,7 @@ describe("parseOrderRequestBody (server gate)", () => {
     expect(r).not.toHaveProperty("paymentStatus");
     expect(r).not.toHaveProperty("orderStatus");
     expect(Object.keys(r).sort()).toEqual(
-      ["customer", "idempotencyKey", "items", "pincode"].sort(),
+      ["billing", "customer", "idempotencyKey", "items", "pincode"].sort(),
     );
   });
 });

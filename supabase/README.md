@@ -11,9 +11,12 @@
 | `0005_messaging.sql` | Historical only — created `whatsapp_*` tables, removed again in `0009`. |
 | `0009_drop_whatsapp.sql` | Drops `whatsapp_leads` + `whatsapp_messages` (messaging out of scope). |
 | `0010_partner_priority.sql` | `delivery_partners.priority` (lower wins; default 100) + index for engine selection. |
+| `0011_order_creation.sql` | Atomic `create_order()` RPC (customer upsert + order + items + pending payment, idempotent). |
 | `0012_payment_states.sql` | Payment lifecycle (`pending→submitted→paid/failed/cancelled/refunded`) + order states (`payment_submitted`, `processing`, `dispatched`). |
 | `0013_admin_dashboard.sql` | Self-guarding `get_admin_dashboard()` RPC (counts, paid revenue, claims, recent orders). |
 | `0014_order_events.sql` | Append-only `order_events` audit log (admin read/insert, no updates). |
+| `0015_customer_aggregates.sql` | `get_admin_customers()` + `get_admin_customer()` aggregate RPCs (repeat-buyer signals). |
+| `0016_gst_billing.sql` | B2B GST: `products.gst_rate`, customer billing master, order billing + tax snapshots, per-line tax, widened total CHECK, `create_order()` replacement. |
 | `0006_rls.sql` | Grants + `is_admin()` helper + RLS policies (see below). |
 | `0007_hardening.sql` | Missing FK indexes, `TS-YYMMDD-SEQ` order numbers + format CHECK, `order_items` timestamps. |
 | `0008_search.sql` | `pg_trgm` + trigram index + `search_products()` RPC (ILIKE recall, similarity ranking, price/category windows, clamped pagination). |
@@ -36,11 +39,13 @@ policies — the `customer_id` FKs are already in place for that.
 
 - All money is `NUMERIC(12,2)` rupees — never float. App code works in
   integer paise and converts at the boundary.
-- Orders snapshot `subtotal / delivery_charge / total_amount`, the GSTIN
-  and the partner name; items snapshot product name + unit price.
-- DB CHECKs enforce `total_amount = subtotal + delivery_charge` and
-  `line_total = quantity * unit_price`, so history cannot drift when
-  catalogue prices change.
+- Orders snapshot `subtotal / delivery_charge / total_amount`, the GSTIN,
+  the billing profile and the tax split (`taxable_amount`, `cgst/sgst/igst_amount`);
+  items snapshot product name + unit price + `gst_rate_percent` + `line_tax_amount`.
+- DB CHECKs enforce `total_amount = subtotal + delivery_charge + cgst + sgst + igst`
+  (zeros for pre-GST/non-GST rows) and `line_total = quantity * unit_price`,
+  so history cannot drift when catalogue prices or rates change.
+- Catalogue prices are GST-exclusive; `products.gst_rate` NULL means 0%.
 
 ## Access model (RLS)
 

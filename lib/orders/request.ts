@@ -1,7 +1,10 @@
 import { AppError } from "@/lib/api/errors";
 import {
+  EMPTY_BILLING_FORM,
+  normalizeBillingForm,
   normalizeCheckoutForm,
   validateCheckoutForm,
+  type BillingFormData,
   type CheckoutFormData,
 } from "@/lib/checkout/validation";
 import { ORDER_MAX_QTY } from "@/lib/orders/quote";
@@ -9,10 +12,11 @@ import { ORDER_MAX_QTY } from "@/lib/orders/quote";
 /**
  * Order request parsing + validation (pure, unit-tested).
  *
- * Accepts ONLY: item IDs + quantities, customer details, pincode and an
- * idempotency key. There is deliberately no field for prices, charges,
- * totals, partner, payment status or order status — the server derives
- * all of those, so a hostile client cannot even submit fakes.
+ * Accepts ONLY: item IDs + quantities, customer details (incl. optional
+ * billing profile), pincode and an idempotency key. There is
+ * deliberately no field for prices, rates, charges, totals, partner,
+ * payment status or order status — the server derives all of those,
+ * so a hostile client cannot even submit fakes.
  */
 
 const UUID_RE =
@@ -31,6 +35,15 @@ export interface ParsedOrderRequest {
     email: string | null;
     gstin: string | null;
   };
+  billing: {
+    gstin: string | null;
+    stateCode: string | null;
+    name: string | null;
+    addressLine: string | null;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  } | null;
   pincode: string;
   idempotencyKey: string;
 }
@@ -75,17 +88,48 @@ export function parseOrderRequestBody(body: unknown): ParsedOrderRequest {
     fail("Customer details are required.");
   }
   const c = rawCustomer as Record<string, unknown>;
+  // A billing object marks a business/GST order; the server infers the
+  // type from payload shape rather than trusting a client type flag.
+  const rawBilling = record["billing"];
+  const hasBillingProfile = rawBilling !== undefined && rawBilling !== null;
+  let billingForm: BillingFormData = { ...EMPTY_BILLING_FORM };
+  if (hasBillingProfile) {
+    if (typeof rawBilling !== "object") {
+      fail("Billing details are invalid.");
+    }
+    const b = rawBilling as Record<string, unknown>;
+    billingForm = {
+      name: String(b["name"] ?? ""),
+      addressLine: String(b["addressLine"] ?? ""),
+      city: String(b["city"] ?? ""),
+      stateCode: String(b["stateCode"] ?? ""),
+      pincode: String(b["pincode"] ?? ""),
+    };
+  }
   const form: CheckoutFormData = {
     name: String(c["name"] ?? ""),
     phone: String(c["phone"] ?? ""),
     email: String(c["email"] ?? ""),
     gstin: String(c["gstin"] ?? ""),
     pincode: String(record["pincode"] ?? ""),
+    customerType: hasBillingProfile ? "business" : "individual",
+    billing: billingForm,
   };
   const validation = validateCheckoutForm(form, items.length);
   if (!validation.valid) {
     const first = (
-      ["name", "phone", "email", "gstin", "pincode"] as const
+      [
+        "name",
+        "phone",
+        "email",
+        "gstin",
+        "billing.name",
+        "billing.addressLine",
+        "billing.city",
+        "billing.stateCode",
+        "billing.pincode",
+        "pincode",
+      ] as const
     ).find((f) => validation.errors[f]);
     fail(
       (first && validation.errors[first]) ||
@@ -95,10 +139,35 @@ export function parseOrderRequestBody(body: unknown): ParsedOrderRequest {
   }
   const customer = normalizeCheckoutForm(form);
 
+  // GST is triggered by the GSTIN. A complete profile flows through
+  // (business path guarantees completeness above); a lone GSTIN without
+  // a profile is taxed inter-state (IGST) so older clients keep working.
+  // No GSTIN → no billing identity, no tax.
+  let billing: ParsedOrderRequest["billing"] = null;
+  if (customer.gstin !== null) {
+    if (!hasBillingProfile) {
+      billing = {
+        gstin: customer.gstin,
+        stateCode: null,
+        name: null,
+        addressLine: null,
+        city: null,
+        state: null,
+        pincode: null,
+      };
+    } else {
+      const normalized = normalizeBillingForm(billingForm, customer.gstin);
+      if (!normalized) {
+        fail("Billing details are incomplete.", 422);
+      }
+      billing = normalized;
+    }
+  }
+
   const idempotencyKey = String(record["idempotencyKey"] ?? "");
   if (!UUID_RE.test(idempotencyKey)) {
     fail("A valid idempotency key is required.");
   }
 
-  return { items, customer, pincode: customer.pincode, idempotencyKey };
+  return { items, customer, billing, pincode: customer.pincode, idempotencyKey };
 }

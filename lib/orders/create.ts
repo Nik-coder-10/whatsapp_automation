@@ -44,13 +44,24 @@ export async function persistOrder(input: {
       order_number: "",
       subtotal: toRupees(quote.subtotalPaise),
       delivery_charge: toRupees(quote.deliveryChargePaise),
-      total_amount: toRupees(quote.subtotalPaise + quote.deliveryChargePaise),
+      total_amount: toRupees(quote.totalPaise),
       delivery_pincode: quote.pincode,
       delivery_partner_id: quote.deliveryPartnerId,
       delivery_partner_name: quote.deliveryPartnerName,
       gstin_snapshot: input.customer.gstin,
       payment_status: "pending",
       order_status: "pending_payment",
+      tax_treatment: quote.tax.treatment,
+      billing_name: quote.billing.name,
+      billing_address_line: quote.billing.addressLine,
+      billing_city: quote.billing.city,
+      billing_state: quote.billing.state,
+      billing_state_code: quote.billing.stateCode,
+      billing_pincode: quote.billing.pincode,
+      taxable_amount: toRupees(quote.tax.taxablePaise),
+      cgst_amount: toRupees(quote.tax.cgstPaise),
+      sgst_amount: toRupees(quote.tax.sgstPaise),
+      igst_amount: toRupees(quote.tax.igstPaise),
     },
     p_items: quote.lines.map((l) => ({
       product_id: l.productId,
@@ -58,9 +69,11 @@ export async function persistOrder(input: {
       quantity: l.quantity,
       unit_price: toRupees(l.unitPricePaise),
       line_total: toRupees(l.lineTotalPaise),
+      gst_rate_percent: l.gstRate,
+      line_tax_amount: toRupees(l.lineTaxPaise),
     })),
     p_payment: {
-      amount: toRupees(quote.subtotalPaise + quote.deliveryChargePaise),
+      amount: toRupees(quote.totalPaise),
       method: "upi",
     },
   };
@@ -94,6 +107,11 @@ export interface OrderSummary {
   subtotalPaise: number;
   deliveryChargePaise: number;
   totalPaise: number;
+  taxTreatment: string;
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  igstPaise: number;
   paymentStatus: string;
   orderStatus: string;
 }
@@ -104,7 +122,9 @@ export async function fetchOrderSummary(orderId: string): Promise<OrderSummary> 
   const { data, error } = await admin
     .from("orders")
     .select(
-      "id,order_number,subtotal,delivery_charge,total_amount,payment_status,order_status",
+      "id,order_number,subtotal,delivery_charge,total_amount," +
+        "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
+        "payment_status,order_status",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -121,15 +141,26 @@ export async function fetchOrderSummary(orderId: string): Promise<OrderSummary> 
     subtotal: string;
     delivery_charge: string;
     total_amount: string;
+    tax_treatment: string;
+    taxable_amount: string;
+    cgst_amount: string;
+    sgst_amount: string;
+    igst_amount: string;
     payment_status: string;
     order_status: string;
   };
+  const paise = (decimal: string): number => Math.round(Number(decimal) * 100);
   return {
     id: row.id,
     orderNumber: row.order_number,
-    subtotalPaise: Math.round(Number(row.subtotal) * 100),
-    deliveryChargePaise: Math.round(Number(row.delivery_charge) * 100),
-    totalPaise: Math.round(Number(row.total_amount) * 100),
+    subtotalPaise: paise(row.subtotal),
+    deliveryChargePaise: paise(row.delivery_charge),
+    totalPaise: paise(row.total_amount),
+    taxTreatment: row.tax_treatment,
+    taxablePaise: paise(row.taxable_amount),
+    cgstPaise: paise(row.cgst_amount),
+    sgstPaise: paise(row.sgst_amount),
+    igstPaise: paise(row.igst_amount),
     paymentStatus: row.payment_status,
     orderStatus: row.order_status,
   };

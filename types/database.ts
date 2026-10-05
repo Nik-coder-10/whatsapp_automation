@@ -52,6 +52,8 @@ export interface ProductRow {
   specifications: Json;
   /** Rupees as decimal string (NUMERIC(12,2)). */
   price: string;
+  /** GST percent as decimal string (NUMERIC(5,2)); NULL = not configured. */
+  gst_rate: string | null;
   stock_quantity: number;
   images: string[];
   is_active: boolean;

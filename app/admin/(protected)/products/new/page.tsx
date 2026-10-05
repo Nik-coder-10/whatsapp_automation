@@ -19,6 +19,7 @@ const EMPTY: ProductFormInput = {
   specificationsJson: "{}",
   stockQuantity: 0,
   isActive: true,
+  gstRate: "",
 };
 
 /** Blank creation form (server validation + slug uniqueness enforced). */

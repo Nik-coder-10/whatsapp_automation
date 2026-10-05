@@ -14,10 +14,10 @@ import type { ProductRow } from "@/types/database";
  * Admin product management (server-only, admins only).
  *
  * Reads/writes use the RLS-respecting server client (admin policies
- * apply) after requireAdmin(). Price changes touch ONLY products.price
- * — historical orders keep their snapshots by architecture (items are
- * never updated), and deactivation (never deletion) keeps FK history
- * intact via ON DELETE RESTRICT.
+ * apply) after requireAdmin(). Price/rate changes touch ONLY the live
+ * products row — historical orders keep their snapshots by architecture
+ * (items are never updated), and deactivation (never deletion) keeps FK
+ * history intact via ON DELETE RESTRICT.
  */
 
 export type AdminProductSort = "newest" | "oldest" | "price_desc" | "price_asc" | "name_asc";
@@ -161,6 +161,8 @@ export type AdminProductDetail = AdminProductListItem & {
   specifications: unknown;
   images: string[];
   updatedAt: string;
+  /** NUMERIC(5,2) decimal string; NULL = GST not configured. */
+  gstRate: string | null;
 };
 
 export async function getAdminProduct(
@@ -171,7 +173,7 @@ export async function getAdminProduct(
   const { data, error } = await client
     .from("products")
     .select(
-      "id,name,slug,description,category,price,stock_quantity,images," +
+      "id,name,slug,description,category,price,gst_rate,stock_quantity,images," +
         "specifications,is_active,created_at,updated_at",
     )
     .eq("id", productId)
@@ -188,6 +190,7 @@ export async function getAdminProduct(
     description: r.description,
     category: r.category,
     pricePaise: Math.round(Number(r.price) * 100),
+    gstRate: r.gst_rate,
     stockQuantity: r.stock_quantity,
     images: r.images,
     firstImage: resolveProductImage(r.images),
@@ -222,6 +225,7 @@ async function writeProduct(
     category: value.category,
     specifications: value.specifications,
     price: paiseToDecimal(value.pricePaise),
+    gst_rate: value.gstRate,
     stock_quantity: value.stockQuantity,
     images: value.images,
     is_active: value.isActive,

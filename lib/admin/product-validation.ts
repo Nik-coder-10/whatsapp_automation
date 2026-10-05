@@ -18,6 +18,8 @@ export interface ProductFormInput {
   specificationsJson: string;
   stockQuantity: number;
   isActive: boolean;
+  /** GST percent as typed ("", "5", "18"); blank = not configured. */
+  gstRate: string;
 }
 
 export type ProductField =
@@ -28,7 +30,8 @@ export type ProductField =
   | "category"
   | "images"
   | "specificationsJson"
-  | "stockQuantity";
+  | "stockQuantity"
+  | "gstRate";
 
 export type ProductFormErrors = Partial<Record<ProductField, string>>;
 
@@ -43,10 +46,13 @@ export interface ValidProduct {
   specifications: Json;
   stockQuantity: number;
   isActive: boolean;
+  /** NUMERIC(5,2) decimal string; NULL = GST not configured (0%). */
+  gstRate: string | null;
 }
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PRICE_RE = /^\d+(?:\.\d{1,2})?$/;
+const RATE_RE = /^\d+(?:\.\d{1,2})?$/;
 
 export function normalizeSlug(value: string): string {
   return value
@@ -113,6 +119,19 @@ export function validateProductInput(
     errors.stockQuantity = "Stock must be a whole number from 0 to 1,000,000.";
   }
 
+  // GST rate: blank = not configured (0% on GST orders). Otherwise a
+  // percent from 0–100 with at most 2 decimals, stored NUMERIC(5,2).
+  const rateRaw = input.gstRate.trim().replace(/%$/, "").trim();
+  let gstRate: string | null = null;
+  if (rateRaw !== "") {
+    const rateNum = RATE_RE.test(rateRaw) ? Number(rateRaw) : NaN;
+    if (!Number.isFinite(rateNum) || rateNum < 0 || rateNum > 100) {
+      errors.gstRate = "GST rate must be blank or a percent from 0 to 100 (max 2 decimals).";
+    } else {
+      gstRate = rateNum.toFixed(2);
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors, value: null };
   }
@@ -128,6 +147,7 @@ export function validateProductInput(
       specifications,
       stockQuantity: input.stockQuantity,
       isActive: input.isActive,
+      gstRate,
     },
   };
 }

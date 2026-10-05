@@ -234,6 +234,48 @@ describe("customer edit (profile only, never snapshots)", () => {
     expect(dup.status).toBe(409);
   });
 
+  it("saves a complete billing master and rejects partial profiles", async () => {
+    withRpc({});
+    const billing = {
+      name: "Repeat Buyer Pvt Ltd",
+      addressLine: "14 Industrial Estate",
+      city: "Mumbai",
+      stateCode: "27",
+      pincode: "400001",
+    };
+    const good = await detailPatch(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Repeat Buyer",
+          phone: "+919810001111",
+          email: "",
+          gstin: "27ABCDE1234F1Z5",
+          billing,
+        }),
+      }),
+      { params: Promise.resolve({ id: "c1" }) },
+    );
+    expect(((await good.json()) as { ok: boolean }).ok).toBe(true);
+
+    const partial = await detailPatch(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Repeat Buyer",
+          phone: "+919810001111",
+          email: "",
+          gstin: "",
+          billing: { ...billing, city: "", stateCode: "" },
+        }),
+      }),
+      { params: Promise.resolve({ id: "c1" }) },
+    );
+    expect(partial.status).toBe(422);
+  });
+
   it("rejects anonymous and non-admin editors", async () => {
     const body = { name: "X", phone: "+919810009999", email: "", gstin: "" };
     const req = () =>

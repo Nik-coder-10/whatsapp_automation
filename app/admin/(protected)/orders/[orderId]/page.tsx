@@ -71,11 +71,44 @@ export default async function AdminOrderPage({
                   <dd className="font-semibold text-zinc-900">{order.customer.email ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-zinc-500">GSTIN</dt>
+                  <dt className="text-zinc-500">GSTIN (customer-provided)</dt>
                   <dd className="font-semibold text-zinc-900">{order.customer.gstin ?? "—"}</dd>
                 </div>
               </dl>
             </section>
+
+            {order.taxTreatment === "gst" ? (
+              <section aria-label="GST billing" className="rounded-lg border border-zinc-200 bg-white p-5">
+                <h2 className="text-base font-bold text-zinc-900">GST billing (order snapshot)</h2>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-zinc-500">Billed to</dt>
+                    <dd className="font-semibold text-zinc-900">{order.billing.name ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Address</dt>
+                    <dd className="font-semibold text-zinc-900">
+                      {[order.billing.addressLine, order.billing.city, order.billing.state, order.billing.pincode]
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">State code</dt>
+                    <dd className="font-semibold text-zinc-900">{order.billing.stateCode ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-zinc-500">Tax type</dt>
+                    <dd className="font-semibold text-zinc-900">
+                      {order.cgstPaise > 0 || order.sgstPaise > 0 ? "CGST + SGST" : "IGST"}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Frozen at order time — editing the customer profile never changes this.
+                </p>
+              </section>
+            ) : null}
 
             <section aria-label="Payment verification" className="rounded-lg border border-zinc-200 bg-white p-5">
               <h2 className="text-base font-bold text-zinc-900">Payment</h2>
@@ -131,6 +164,7 @@ export default async function AdminOrderPage({
                       @ ₹{(item.unitPricePaise / 100).toLocaleString("en-IN", {
                         minimumFractionDigits: 2,
                       })}
+                      {item.gstRate !== null ? ` + ${Number(item.gstRate).toLocaleString("en-IN")}% GST` : null}
                     </span>
                   </span>
                   <span className="shrink-0 font-semibold text-zinc-900">
@@ -141,11 +175,38 @@ export default async function AdminOrderPage({
             </ul>
             <dl className="mt-3 flex flex-col gap-1.5 border-t border-zinc-100 pt-3 text-sm">
               <div className="flex justify-between">
-                <dt className="text-zinc-600">Subtotal</dt>
+                <dt className="text-zinc-600">Subtotal (ex-GST)</dt>
                 <dd className="font-semibold text-zinc-900">
                   <PriceDisplay amountPaise={order.subtotalPaise} size="sm" />
                 </dd>
               </div>
+              {order.taxTreatment === "gst" ? (
+                <>
+                  {order.cgstPaise > 0 || order.sgstPaise > 0 ? (
+                    <>
+                      <div className="flex justify-between">
+                        <dt className="text-zinc-600">CGST</dt>
+                        <dd className="font-semibold text-zinc-900">
+                          <PriceDisplay amountPaise={order.cgstPaise} size="sm" />
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-zinc-600">SGST</dt>
+                        <dd className="font-semibold text-zinc-900">
+                          <PriceDisplay amountPaise={order.sgstPaise} size="sm" />
+                        </dd>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <dt className="text-zinc-600">IGST</dt>
+                      <dd className="font-semibold text-zinc-900">
+                        <PriceDisplay amountPaise={order.igstPaise} size="sm" />
+                      </dd>
+                    </div>
+                  )}
+                </>
+              ) : null}
               <div className="flex justify-between">
                 <dt className="text-zinc-600">Delivery ({order.deliveryPartnerName})</dt>
                 <dd className="font-semibold text-zinc-900">
