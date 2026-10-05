@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { useCart } from "@/components/cart/CartProvider";
 import { siteConfig } from "@/config/site";
@@ -61,20 +61,31 @@ function CartIcon() {
 /** Live cart button with item-count badge. */
 function CartButton({ onNavigate }: { onNavigate?: () => void }) {
   const { count } = useCart();
+  // Browser-only state (localStorage) differs from the SSR render, so
+  // the badge waits for mount — otherwise every page with a stored
+  // cart throws a hydration mismatch and re-renders client-side.
+  // useSyncExternalStore (instead of setState-in-effect) keeps the
+  // linter's cascading-render rule satisfied.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const shown = mounted ? count : 0;
   return (
     <Link
       href="/cart"
       onClick={onNavigate}
-      aria-label={count === 0 ? "Shopping cart, empty" : `Shopping cart, ${count} items`}
+      aria-label={shown === 0 ? "Shopping cart, empty" : `Shopping cart, ${shown} items`}
       className="relative rounded p-2 text-white hover:bg-brand-800"
     >
       <CartIcon />
-      {count > 0 ? (
+      {shown > 0 ? (
         <span
           aria-hidden
           className="absolute -top-0.5 -right-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[11px] font-bold text-brand-950"
         >
-          {count > 99 ? "99+" : count}
+          {shown > 99 ? "99+" : shown}
         </span>
       ) : null}
     </Link>

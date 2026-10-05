@@ -6,13 +6,26 @@ import { createClient } from "@/lib/supabase/server";
  * service-role key (no public UPDATE policy exists — see 0006_rls.sql).
  */
 export async function getSessionUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error) return null;
-  return user;
+  // Fail closed: an unreachable/misconfigured backend (or any client
+  // construction failure) means "no authenticated user", never a 500
+  // that could mask the authorization decision. requireUser() then
+  // yields a clean 401 and the admin layout its sign-in gate.
+  let supabase: Awaited<ReturnType<typeof createClient>>;
+  try {
+    supabase = await createClient();
+  } catch {
+    return null;
+  }
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    if (error) return null;
+    return user;
+  } catch {
+    return null;
+  }
 }
 
 export async function requireUser() {
@@ -28,15 +41,19 @@ export async function requireUser() {
 export async function isAdmin(): Promise<boolean> {
   const user = await getSessionUser();
   if (!user) return false;
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (error) return false;
-  const row = data as { is_admin: boolean } | null;
-  return row?.is_admin === true;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (error) return false;
+    const row = data as { is_admin: boolean } | null;
+    return row?.is_admin === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function requireAdmin() {

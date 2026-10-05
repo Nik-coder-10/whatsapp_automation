@@ -27,7 +27,10 @@ afterEach(() => {
 });
 
 describe("computeOrderTax (integer paise, per-line rounding)", () => {
-  it("returns all zeros for non-GST orders", () => {
+  it("returns zero tax but the full taxable base for non-GST orders", () => {
+    // taxablePaise always equals the goods value (it must match the
+    // order subtotal — invoice verification requires this identity for
+    // GST and non-GST orders alike). Only the tax components are zero.
     expect(
       computeOrderTax({
         lines: lines(["18.00"]),
@@ -38,7 +41,7 @@ describe("computeOrderTax (integer paise, per-line rounding)", () => {
     ).toEqual({
       treatment: "non_gst",
       type: "none",
-      taxablePaise: 0,
+      taxablePaise: 10000,
       cgstPaise: 0,
       sgstPaise: 0,
       igstPaise: 0,

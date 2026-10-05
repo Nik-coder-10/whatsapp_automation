@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/components/cart/CartProvider";
-import { Button } from "@/components/ui/Button";
 import { PriceDisplay } from "@/components/ui/PriceDisplay";
 import { QuantitySelector } from "@/components/ui/QuantitySelector";
 import { EmptyState } from "@/components/ui/States";
@@ -104,9 +103,12 @@ export function CartView() {
           server-side at checkout.
         </p>
         <div className="mt-4 flex flex-col gap-2">
-          <Button variant="primary" disabled title="Checkout — coming in the checkout phase">
-            Proceed to Checkout — soon
-          </Button>
+          <Link
+            href="/checkout"
+            className="inline-flex h-12 items-center justify-center rounded-md bg-brand-800 px-6 text-base font-bold text-white hover:bg-brand-700"
+          >
+            Proceed to Checkout
+          </Link>
           <Link
             href="/products"
             className="inline-flex h-11 items-center justify-center rounded-md border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-800 hover:bg-zinc-50"

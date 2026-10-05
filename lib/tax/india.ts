@@ -104,10 +104,13 @@ export function parseGstRate(value: string | null): number {
 
 /**
  * Compute order tax from priced lines. GST applies only when a GSTIN
- * is present (gstin === null → non-GST order, all zeros). State codes
- * are 2-digit strings; same code → CGST+SGST, otherwise IGST. An
- * unconfigured business state falls back to IGST (documented; needs
- * Trolift's confirmation of its home state).
+ * is present (gstin === null → non-GST order, zero tax components).
+ * taxablePaise is ALWAYS the goods value (it must equal the order
+ * subtotal — downstream invoice verification requires this identity
+ * for every order, GST or not). State codes are 2-digit strings; same
+ * code → CGST+SGST, otherwise IGST. An unconfigured business state
+ * falls back to IGST (documented; needs Trolift's confirmation of its
+ * home state).
  */
 export function computeOrderTax(input: {
   lines: TaxedLineInput[];
@@ -115,18 +118,18 @@ export function computeOrderTax(input: {
   customerStateCode: string | null;
   businessStateCode: string | null;
 }): OrderTax {
-  const zero: OrderTax = {
-    treatment: "non_gst",
-    type: "none",
-    taxablePaise: 0,
-    cgstPaise: 0,
-    sgstPaise: 0,
-    igstPaise: 0,
-    totalGstPaise: 0,
-  };
-  if (input.gstin === null) return zero;
-
   const taxablePaise = input.lines.reduce((n, l) => n + l.lineTotalPaise, 0);
+  if (input.gstin === null) {
+    return {
+      treatment: "non_gst",
+      type: "none",
+      taxablePaise,
+      cgstPaise: 0,
+      sgstPaise: 0,
+      igstPaise: 0,
+      totalGstPaise: 0,
+    };
+  }
   const lineTaxes = input.lines.map((l) =>
     Math.round((l.lineTotalPaise * parseGstRate(l.gstRate)) / 100),
   );
