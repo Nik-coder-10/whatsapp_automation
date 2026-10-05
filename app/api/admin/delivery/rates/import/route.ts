@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
-import { badRequest, ok } from "@/lib/api/response";
+import { badRequest, ok, rateLimited } from "@/lib/api/response";
 import { AppError, handleRouteError } from "@/lib/api/errors";
+import { checkRateLimit } from "@/lib/rate-limit/index";
 import { requireAdmin } from "@/lib/auth/session";
 import { confirmImport } from "@/lib/admin/importer";
 
@@ -14,6 +15,8 @@ import { confirmImport } from "@/lib/admin/importer";
  */
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, "import");
+    if (!rl.allowed) return rateLimited(rl.resetMs);
     const admin = await requireAdmin();
     let body: unknown;
     try {

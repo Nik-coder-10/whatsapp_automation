@@ -102,6 +102,20 @@ export function escapeCsvCell(value: string): string {
   return value;
 }
 
+/**
+ * Export-safe cell: escapeCsvCell PLUS spreadsheet formula-injection
+ * neutralization. Cells starting with =, +, - or @ execute as formulas
+ * when a CSV is opened in Excel/Sheets — and our data legitimately
+ * starts that way (phone numbers like +9198…, names like "-"). Prefix
+ * such cells with a single quote (Excel's text marker: displayed value
+ * is unchanged). Use ONLY for generated downloads, never for import
+ * round-trips (the quote would corrupt re-imported values).
+ */
+export function escapeCsvExportCell(value: string): string {
+  const guarded = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return escapeCsvCell(guarded);
+}
+
 /** Join header + rows into a CSV document (LF endings). */
 export function toCsv(header: string[], rows: string[][]): string {
   const lines = [header.map(escapeCsvCell).join(",")];

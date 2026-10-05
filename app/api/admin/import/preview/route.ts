@@ -1,5 +1,6 @@
-import { badRequest, ok } from "@/lib/api/response";
+import { badRequest, ok, rateLimited } from "@/lib/api/response";
 import { AppError, handleRouteError } from "@/lib/api/errors";
+import { checkRateLimit } from "@/lib/rate-limit/index";
 import {
   IMPORT_DATASETS,
   previewImport,
@@ -15,6 +16,8 @@ import {
  */
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, "import");
+    if (!rl.allowed) return rateLimited(rl.resetMs);
     let body: unknown;
     try {
       body = (await req.json()) as unknown;

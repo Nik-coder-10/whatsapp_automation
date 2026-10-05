@@ -14,6 +14,7 @@ import {
   slugifyCategory,
 } from "@/lib/catalog/products";
 import { siteConfig } from "@/config/site";
+import { toJsonLdScript } from "@/lib/seo/jsonld";
 
 export async function generateMetadata({
   params,
@@ -97,7 +98,7 @@ export default async function ProductPage({
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: toJsonLdScript(structuredData) }}
       />
       <Breadcrumbs
         items={[

@@ -69,7 +69,9 @@ function readEnvInt(name: string, fallback: number): number {
 }
 
 /** Per-route budgets (requests/minute, env-overridable). */
-export function routeLimit(route: "orders" | "claim" | "delivery"): RateLimitOptions {
+export function routeLimit(
+  route: "orders" | "claim" | "delivery" | "import" | "export" | "invoice",
+): RateLimitOptions {
   const windowMs = readEnvInt("RATE_LIMIT_WINDOW_MS", 60_000);
   switch (route) {
     case "orders":
@@ -78,6 +80,12 @@ export function routeLimit(route: "orders" | "claim" | "delivery"): RateLimitOpt
       return { limit: readEnvInt("RATE_LIMIT_CLAIM_PER_MIN", 10), windowMs };
     case "delivery":
       return { limit: readEnvInt("RATE_LIMIT_DELIVERY_PER_MIN", 60), windowMs };
+    case "import":
+      return { limit: readEnvInt("RATE_LIMIT_IMPORT_PER_MIN", 10), windowMs };
+    case "export":
+      return { limit: readEnvInt("RATE_LIMIT_EXPORT_PER_MIN", 10), windowMs };
+    case "invoice":
+      return { limit: readEnvInt("RATE_LIMIT_INVOICE_PER_MIN", 30), windowMs };
   }
 }
 
@@ -95,7 +103,7 @@ function clientIp(req: Request): string {
  */
 export function checkRateLimit(
   req: Request,
-  route: "orders" | "claim" | "delivery",
+  route: "orders" | "claim" | "delivery" | "import" | "export" | "invoice",
   store: RateLimitStore = defaultStore,
 ): RateLimitResult {
   return store.check(`rl:${route}:${clientIp(req)}`, routeLimit(route));

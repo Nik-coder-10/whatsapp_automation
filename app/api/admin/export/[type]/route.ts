@@ -1,5 +1,6 @@
-import { notFound } from "@/lib/api/response";
+import { notFound, rateLimited } from "@/lib/api/response";
 import { handleRouteError } from "@/lib/api/errors";
+import { checkRateLimit } from "@/lib/rate-limit/index";
 import { requireAdmin } from "@/lib/auth/session";
 import {
   EXPORT_DATASETS,
@@ -17,10 +18,12 @@ import {
  * server-side chunks; the bulk read is audit-logged.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ type: string }> },
 ) {
   try {
+    const rl = checkRateLimit(req, "export");
+    if (!rl.allowed) return rateLimited(rl.resetMs);
     const admin = await requireAdmin();
     const { type } = await params;
     if (!(EXPORT_DATASETS as string[]).includes(type)) {

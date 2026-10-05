@@ -1,4 +1,6 @@
 import { handleRouteError } from "@/lib/api/errors";
+import { rateLimited } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/rate-limit/index";
 import { getInvoiceData } from "@/lib/invoices/service";
 import { renderInvoicePdf } from "@/lib/invoices/pdf";
 import { invoicePdfResponse } from "@/lib/invoices/response";
@@ -20,6 +22,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const rl = checkRateLimit(req, "invoice");
+    if (!rl.allowed) return rateLimited(rl.resetMs);
     const { id } = await params;
     const invoice = await getInvoiceData(id);
     const pdf = await renderInvoicePdf(invoice);

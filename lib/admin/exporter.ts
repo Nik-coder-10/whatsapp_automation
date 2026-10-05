@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { AppError } from "@/lib/api/errors";
-import { escapeCsvCell } from "@/lib/admin/csv";
+import { escapeCsvCell, escapeCsvExportCell } from "@/lib/admin/csv";
 import { logAdminAudit } from "@/lib/admin/audit";
 
 /**
@@ -317,7 +317,9 @@ export async function buildExport(
       offset += chunk.length;
       controller.enqueue(
         encoder.encode(
-          chunk.map((row) => row.map(escapeCsvCell).join(",")).join("\n") + "\n",
+          chunk
+            .map((row) => row.map(escapeCsvExportCell).join(","))
+            .join("\n") + "\n",
         ),
       );
     },
