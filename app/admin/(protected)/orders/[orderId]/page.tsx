@@ -8,6 +8,7 @@ import { OrderStatusBadge, PaymentStatusBadge } from "@/components/ui/StatusBadg
 import { PaymentActions } from "@/components/admin/PaymentActions";
 import { StatusActions } from "@/components/admin/StatusActions";
 import { getAdminOrderDetail } from "@/lib/admin/orders";
+import { ADMIN_EVENT_DESCRIPTIONS } from "@/lib/orders/events";
 
 export const metadata: Metadata = {
   title: "Order detail",
@@ -254,7 +255,14 @@ export default async function AdminOrderPage({
               <OrderStatusBadge status={order.orderStatus} />
             </div>
             <div className="mt-3">
-              <StatusActions orderId={order.id} current={order.orderStatus} />
+              <StatusActions
+                orderId={order.id}
+                current={order.orderStatus}
+                hasPacked={order.events.some((e) => e.eventType === "PACKED")}
+                hasReady={order.events.some(
+                  (e) => e.eventType === "READY_FOR_DISPATCH",
+                )}
+              />
             </div>
           </section>
 
@@ -262,39 +270,67 @@ export default async function AdminOrderPage({
             <h2 className="text-base font-bold text-zinc-900">Activity</h2>
             {order.events.length === 0 ? (
               <p className="mt-2 text-sm text-zinc-500">
-                No admin actions recorded yet. Status changes and payment
-                decisions will appear here with timestamps.
+                No events recorded yet. Order placement, payment decisions,
+                status changes and fulfilment milestones appear here with
+                timestamps.
               </p>
             ) : (
-              <ul className="mt-3 flex flex-col gap-2">
-                {order.events.map((e) => (
+              <ol className="mt-3 flex flex-col gap-0">
+                {order.events.map((e, i) => (
                   <li
-                    key={`${e.createdAt}-${e.action}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
+                    key={`${e.createdAt}-${e.eventType}-${e.toStatus ?? ""}`}
+                    className="relative flex gap-3 pb-4 pl-6 last:pb-0"
                   >
-                    <span className="font-semibold text-zinc-900">
-                      {e.action.replace(/_/g, " ")}
-                      {e.fromStatus || e.toStatus ? (
-                        <span className="font-normal text-zinc-500">
-                          {" "}
-                          ({e.fromStatus ?? "—"} → {e.toStatus ?? "—"})
+                    <span
+                      aria-hidden
+                      className="absolute top-1.5 left-[5px] h-2.5 w-2.5 rounded-full bg-brand-700"
+                    />
+                    {i < order.events.length - 1 ? (
+                      <span
+                        aria-hidden
+                        className="absolute top-5 bottom-0 left-[10px] w-px bg-zinc-200"
+                      />
+                    ) : null}
+                    <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm">
+                      <span className="min-w-0">
+                        <span className="font-semibold text-zinc-900">
+                          {ADMIN_EVENT_DESCRIPTIONS[
+                            e.eventType as keyof typeof ADMIN_EVENT_DESCRIPTIONS
+                          ] ?? e.eventType}
                         </span>
-                      ) : null}
-                      {e.note ? (
-                        <span className="block text-xs font-normal text-zinc-500">{e.note}</span>
-                      ) : null}
-                    </span>
-                    <span className="text-xs whitespace-nowrap text-zinc-500">
-                      {new Date(e.createdAt).toLocaleString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+                        {e.fromStatus || e.toStatus ? (
+                          <span className="font-normal text-zinc-500">
+                            {" "}
+                            ({e.fromStatus ?? "—"} → {e.toStatus ?? "—"})
+                          </span>
+                        ) : null}
+                        <span className="block text-xs font-normal text-zinc-500">
+                          {e.actorType === "admin" ? "Staff" : e.actorType}
+                          {e.actorId ? ` · ${e.actorId.slice(0, 8)}` : ""}
+                        </span>
+                        {e.note ? (
+                          <span className="block text-xs font-normal text-zinc-500">{e.note}</span>
+                        ) : null}
+                        {Object.keys(e.metadata).length > 0 ? (
+                          <span className="block text-xs font-normal text-zinc-500">
+                            {Object.entries(e.metadata)
+                              .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
+                              .join(" · ")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-xs whitespace-nowrap text-zinc-500">
+                        {new Date(e.createdAt).toLocaleString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
           </section>
 

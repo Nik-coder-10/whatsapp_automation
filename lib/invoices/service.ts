@@ -10,6 +10,7 @@ import {
   canIssueInvoice,
   type InvoiceData,
 } from "@/lib/invoices/data";
+import { logOrderEvent } from "@/lib/admin/orders";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,6 +38,7 @@ interface OrderSnapshot {
   order_number: string;
   created_at: string;
   payment_status: string;
+  order_status: string;
   subtotal: string;
   delivery_charge: string;
   total_amount: string;
@@ -111,7 +113,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData> {
   const { data: order, error: orderError } = await admin
     .from("orders")
     .select(
-      "id,order_number,created_at,payment_status,subtotal,delivery_charge," +
+      "id,order_number,created_at,payment_status,order_status,subtotal,delivery_charge," +
         "total_amount,delivery_pincode,delivery_partner_name,gstin_snapshot," +
         "tax_treatment,taxable_amount,cgst_amount,sgst_amount,igst_amount," +
         "billing_name,billing_address_line,billing_city,billing_state," +
@@ -165,6 +167,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData> {
 
   // Claim the number. A concurrent claim for the same order wins via
   // the UNIQUE constraint; the loser falls through to the winner's row.
+  // Only the winning claim emits INVOICE_ISSUED (tracked by the flag).
   const { error: insertError } = await admin.from("invoices").insert({
     order_id: o.id,
     invoice_number: numberData,
@@ -172,6 +175,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData> {
   if (insertError && !isUniqueViolation(insertError)) {
     throw new AppError("INTERNAL_ERROR", "Could not create the invoice.", 500);
   }
+  const claimedRow = !insertError;
 
   // Canonical number + date come from the stored row (DB clock), so the
   // frozen document always matches its row even if a concurrent claim won.
@@ -242,6 +246,21 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData> {
     .from("invoices")
     .update({ data: built })
     .eq("order_id", o.id);
+
+  if (claimedRow) {
+    // First and only issuance event for this order (actor system — no
+    // user session on the guest invoice path). Re-downloads return the
+    // frozen row above and emit nothing.
+    await logOrderEvent({
+      orderId: o.id,
+      eventType: "INVOICE_ISSUED",
+      actorType: "system",
+      actorUserId: null,
+      toStatus: o.order_status,
+      metadata: { invoice_number: claim.invoice_number },
+      client: admin,
+    });
+  }
 
   const { data: stored, error: storedError } = await admin
     .from("invoices")

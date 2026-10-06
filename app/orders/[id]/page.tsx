@@ -134,6 +134,33 @@ export default async function OrderPage({
         )}
       </section>
 
+      {order.timeline.length > 0 ? (
+        <section aria-label="Order updates" className="mt-6 rounded-lg border border-zinc-200 bg-white p-5">
+          <h2 className="text-base font-bold text-zinc-900">Updates</h2>
+          <ol className="mt-3 flex flex-col gap-0">
+            {order.timeline.map((entry) => (
+              <li key={`${entry.at}-${entry.label}`} className="relative flex gap-3 pb-3 pl-6 last:pb-0">
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 left-[5px] h-2.5 w-2.5 rounded-full bg-brand-700"
+                />
+                <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-2 text-sm">
+                  <span className="font-semibold text-zinc-900">{entry.label}</span>
+                  <span className="shrink-0 text-xs whitespace-nowrap text-zinc-500">
+                    {new Date(entry.at).toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
       <ol aria-label="Order progress" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {stages.map((s) => (
           <li

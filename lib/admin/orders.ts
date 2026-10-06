@@ -7,6 +7,13 @@ import {
   canTransitionPayment,
 } from "@/lib/orders/transitions";
 import type { OrderStatus, PaymentStatus } from "@/types";
+import {
+  LEGACY_ACTION,
+  assertEventMetadata,
+  eventTypeForTransition,
+  type ActorType,
+  type OrderEventType,
+} from "@/lib/orders/events";
 
 /**
  * Admin order management (server-only, admins only).
@@ -241,10 +248,14 @@ export interface AdminOrderDetail {
   paymentReference: string | null;
   paymentUpdatedAt: string | null;
   events: Array<{
+    eventType: string;
+    actorType: string;
+    actorId: string | null;
     action: string;
     fromStatus: string | null;
     toStatus: string | null;
     note: string | null;
+    metadata: Record<string, string | number | boolean>;
     createdAt: string;
   }>;
 }
@@ -310,10 +321,13 @@ export async function getAdminOrderDetail(
       .maybeSingle(),
     client
       .from("order_events")
-      .select("action,from_status,to_status,note,created_at")
+      .select(
+        "event_type,actor_type,actor_user_id,action,from_status," +
+          "to_status,note,metadata,created_at",
+      )
       .eq("order_id", o.id)
       .order("created_at", { ascending: false })
-      .limit(25),
+      .limit(50),
   ]);
   const itemRows = (items ?? []) as unknown as Array<{
     product_name: string;
@@ -328,10 +342,14 @@ export async function getAdminOrderDetail(
     updated_at: string;
   } | null;
   const eventRows = (events ?? []) as unknown as Array<{
+    event_type: string;
+    actor_type: string;
+    actor_user_id: string | null;
     action: string;
     from_status: string | null;
     to_status: string | null;
     note: string | null;
+    metadata: Record<string, string | number | boolean> | null;
     created_at: string;
   }>;
   return {
@@ -376,35 +394,64 @@ export async function getAdminOrderDetail(
     paymentReference: payRow?.transaction_reference ?? null,
     paymentUpdatedAt: payRow?.updated_at ?? null,
     events: eventRows.map((e) => ({
+      eventType: e.event_type,
+      actorType: e.actor_type,
+      actorId: e.actor_user_id,
       action: e.action,
       fromStatus: e.from_status,
       toStatus: e.to_status,
       note: e.note,
+      metadata: e.metadata ?? {},
       createdAt: e.created_at,
     })),
   };
 }
 
-/** Single audit helper for every admin mutation (append-only). */
+/**
+ * Single audit helper for every order mutation (append-only).
+ *
+ * The event type comes from the closed catalog — callers cannot invent
+ * types, and neither can clients (no API accepts one). Failures THROW
+ * instead of logging to console: a swallowed audit write is how an
+ * order ends up PAID with no corresponding event. Callers perform the
+ * state change first, then log; a thrown audit error surfaces as a 500
+ * the operator retries (all mutations here are idempotent-safe via
+ * guarded updates and transition validation).
+ *
+ * Pass an explicit client when there is no user session (guest claim
+ * path, invoice service) — those callers hold the service-role client.
+ */
 export async function logOrderEvent(input: {
   orderId: string;
-  actorUserId: string;
-  action: string;
+  eventType: OrderEventType;
+  actorType: ActorType;
+  actorUserId: string | null;
   fromStatus?: string | null;
   toStatus?: string | null;
   note?: string | null;
+  metadata?: unknown;
+  client?: AdminClient;
 }): Promise<void> {
-  const client = await createClient();
+  const metadata =
+    input.metadata === undefined ? {} : assertEventMetadata(input.metadata);
+  const client = input.client ?? (await createClient());
   const { error } = await client.from("order_events").insert({
     order_id: input.orderId,
+    event_type: input.eventType,
+    actor_type: input.actorType,
     actor_user_id: input.actorUserId,
-    action: input.action.slice(0, 60),
+    action: LEGACY_ACTION[input.eventType],
     from_status: input.fromStatus ?? null,
     to_status: input.toStatus ?? null,
     note: input.note?.slice(0, 500) ?? null,
+    metadata,
   });
   if (error) {
-    console.error("[admin] Audit insert failed:", error.message);
+    throw new AppError(
+      "INTERNAL_ERROR",
+      "Could not record the order event. Reload and retry.",
+      500,
+    );
   }
 }
 
@@ -503,12 +550,27 @@ export async function verifyPaymentClaim(
   if (!orderOk) {
     throw new AppError("BAD_REQUEST", "Order changed state. Reload and retry.", 409);
   }
+  // Approval moves money AND fulfilment state together, so it emits
+  // both canonical events (either can be queried independently).
+  if (decision === "approve") {
+    await logOrderEvent({
+      orderId: row.id,
+      eventType: "PAYMENT_VERIFIED",
+      actorType: "admin",
+      actorUserId: admin.id,
+      fromStatus: row.payment_status,
+      toStatus: targetPayment,
+      metadata: { payment_method: "upi" },
+    });
+  }
   await logOrderEvent({
     orderId: row.id,
+    eventType:
+      decision === "approve" ? "ORDER_CONFIRMED" : "PAYMENT_REJECTED",
+    actorType: "admin",
     actorUserId: admin.id,
-    action: decision === "approve" ? "payment_verified" : "payment_rejected",
-    fromStatus: `${row.payment_status}/${row.order_status}`,
-    toStatus: `${targetPayment}/${targetOrder}`,
+    fromStatus: row.order_status,
+    toStatus: targetOrder,
     note: note?.trim() || null,
   });
   return { paymentStatus: targetPayment, orderStatus: targetOrder };
@@ -571,10 +633,68 @@ export async function transitionOrderStatus(
   }
   await logOrderEvent({
     orderId: row.id,
+    eventType: eventTypeForTransition(row.order_status, toStatus),
+    actorType: "admin",
     actorUserId: admin.id,
-    action: toStatus === "cancelled" ? "order_cancelled" : "status_changed",
     fromStatus: row.order_status,
     toStatus,
   });
   return { orderStatus: toStatus };
+}
+
+/**
+ * Fulfilment milestones that don't move order_status (the state machine
+ * is untouched): PACKED then READY_FOR_DISPATCH, in that order, while
+ * the order is still being fulfilled. Strictly gated — packing requires
+ * confirmed/processing with no prior PACKED event; readiness requires
+ * a PACKED event, no prior READY event, and a non-terminal status.
+ */
+export async function markFulfillmentStep(
+  orderId: string,
+  step: "packed" | "ready_for_dispatch",
+): Promise<{ eventType: OrderEventType }> {
+  const { admin, client, row } = await loadForMutation(orderId);
+  if (row.order_status !== "confirmed" && row.order_status !== "processing") {
+    throw new AppError(
+      "BAD_REQUEST",
+      "Fulfilment steps apply only to confirmed or processing orders.",
+      409,
+    );
+  }
+  const { data: prior, error: priorError } = await client
+    .from("order_events")
+    .select("event_type")
+    .eq("order_id", row.id)
+    .in("event_type", ["PACKED", "READY_FOR_DISPATCH"]);
+  if (priorError) {
+    throw new AppError("INTERNAL_ERROR", "Could not check fulfilment state.", 500);
+  }
+  const done = new Set(
+    ((prior ?? []) as unknown as Array<{ event_type: string }>).map(
+      (r) => r.event_type,
+    ),
+  );
+  const eventType: OrderEventType =
+    step === "packed" ? "PACKED" : "READY_FOR_DISPATCH";
+  if (step === "packed" && done.has("PACKED")) {
+    throw new AppError("BAD_REQUEST", "Order is already packed.", 409);
+  }
+  if (step === "ready_for_dispatch") {
+    if (!done.has("PACKED")) {
+      throw new AppError("BAD_REQUEST", "Pack the order first.", 409);
+    }
+    if (done.has("READY_FOR_DISPATCH")) {
+      throw new AppError("BAD_REQUEST", "Order is already ready for dispatch.", 409);
+    }
+  }
+  await logOrderEvent({
+    orderId: row.id,
+    eventType,
+    actorType: "admin",
+    actorUserId: admin.id,
+    fromStatus: row.order_status,
+    toStatus: row.order_status,
+    client,
+  });
+  return { eventType };
 }

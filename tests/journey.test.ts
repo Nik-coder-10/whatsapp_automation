@@ -336,10 +336,14 @@ function adminTables(op: Parameters<MockResponder>[0]): ReturnType<MockResponder
         db.events.push({
           id: uuid(700 + db.events.length),
           order_id: vals["order_id"],
+          event_type: vals["event_type"] ?? null,
+          actor_type: vals["actor_type"] ?? null,
+          actor_user_id: vals["actor_user_id"] ?? null,
           action: vals["action"],
           from_status: vals["from_status"] ?? null,
           to_status: vals["to_status"] ?? null,
           note: vals["note"] ?? null,
+          metadata: vals["metadata"] ?? {},
           created_at: "2026-10-05T10:00:00.000Z",
         });
         return { rows: [{ id: "e1" }], error: null };
@@ -496,6 +500,20 @@ function emulateCreateOrder(args: Record<string, unknown>): {
       expires_at: Date.now() + hours * 3600_000,
     });
   }
+  // Mirror the RPC's in-transaction ORDER_CREATED insert.
+  db.events.push({
+    id: uuid(700 + db.events.length),
+    order_id: orderId,
+    event_type: "ORDER_CREATED",
+    actor_type: "customer",
+    actor_user_id: customerId,
+    action: "order_created",
+    from_status: null,
+    to_status: "pending_payment",
+    note: null,
+    metadata: {},
+    created_at: "2026-10-05T10:00:00.000Z",
+  });
   db.idem.set(key, orderId);
   return { rows: [orderId], error: null };
 }
@@ -637,6 +655,22 @@ describe("customer journey: catalogue to delivered invoice", () => {
     expect(detail?.totalPaise).toBe(1304800);
     expect(detail?.paymentReference).toBe(UTR);
     expect(detail?.events.map((e) => e.action)).toContain("payment_verified");
+    // Canonical audit trail so far: creation (customer actor) then
+    // claim, verification and confirmation (admin actors).
+    expect(detail?.events.map((e) => e.eventType)).toEqual([
+      "ORDER_CREATED",
+      "PAYMENT_SUBMITTED",
+      "PAYMENT_VERIFIED",
+      "ORDER_CONFIRMED",
+    ]);
+    expect(detail?.events[0]).toMatchObject({
+      actorType: "customer",
+      metadata: {},
+    });
+    expect(detail?.events[1]).toMatchObject({
+      actorType: "customer",
+      metadata: { payment_method: "upi" },
+    });
 
     // 9. Fulfilment walk to delivered through valid states only.
     for (const to of ["processing", "dispatched", "delivered"] as const) {
@@ -667,6 +701,33 @@ describe("customer journey: catalogue to delivered invoice", () => {
     const again = await getPayableOrder(orderId);
     expect(again?.orderStatus).toBe("delivered");
     expect(again?.paymentStatus).toBe("paid");
+
+    // 13. Full audit trail ends with fulfilment + invoice issuance;
+    // the customer feed carries labels + timestamps only.
+    const final = await getAdminOrderDetail(orderId);
+    expect(final?.events.map((e) => e.eventType)).toEqual([
+      "ORDER_CREATED",
+      "PAYMENT_SUBMITTED",
+      "PAYMENT_VERIFIED",
+      "ORDER_CONFIRMED",
+      "PROCESSING_STARTED",
+      "DISPATCHED",
+      "DELIVERED",
+      "INVOICE_ISSUED",
+    ]);
+    expect(again?.timeline.map((t) => t.label)).toEqual([
+      "Order placed",
+      "Payment submitted for verification",
+      "Payment received",
+      "Order confirmed",
+      "Being prepared",
+      "Dispatched",
+      "Delivered",
+      "Tax invoice ready",
+    ]);
+    for (const entry of again?.timeline ?? []) {
+      expect(Object.keys(entry).sort()).toEqual(["at", "label"]);
+    }
   });
 
   it("prices a GST order with CGST/SGST from live rates", async () => {

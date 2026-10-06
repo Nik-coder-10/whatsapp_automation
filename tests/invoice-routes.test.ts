@@ -82,6 +82,8 @@ const invoices = new Map<
 >();
 let seq = 41;
 let rpcCalls = 0;
+// Canonical event rows written during invoice issuance.
+const issued: Array<Record<string, unknown>> = [];
 
 const customerReq = (id: string, query = "") =>
   new Request(`http://localhost/api/orders/${id}/invoice${query}`);
@@ -94,6 +96,7 @@ beforeEach(() => {
   invoices.clear();
   seq = 41;
   rpcCalls = 0;
+  issued.length = 0;
   ORDER_ROW.payment_status = "paid";
   ORDER_ROW.customer_name_snapshot = "Acme Pvt Ltd";
   ORDER_ROW.subtotal = "12598.00";
@@ -153,6 +156,15 @@ beforeEach(() => {
     }
     if (op.table === "order_items") return { rows: ITEM_ROWS, error: null };
     if (op.table === "payments") return { rows: [{ method: "upi" }], error: null };
+    if (op.table === "order_events") {
+      // INVOICE_ISSUED emission on first freeze (insert folds into
+      // updateValues in the mock). Recorded for issuance assertions.
+      if (op.updateValues !== undefined) {
+        issued.push(op.updateValues as Record<string, unknown>);
+        return { rows: [{ id: "e1" }], error: null };
+      }
+      return { rows: [], error: null };
+    }
     throw new Error(`unexpected table ${op.table ?? op.rpc}`);
   };
 });
@@ -185,6 +197,21 @@ describe("customer invoice route (capability URL, fail closed)", () => {
     const second = await getInvoiceData(ORDER_ID);
     expect(second.invoiceNumber).toBe(first.invoiceNumber);
     expect(rpcCalls).toBe(1);
+  });
+
+  it("emits INVOICE_ISSUED exactly once (first freeze only)", async () => {
+    await getInvoiceData(ORDER_ID);
+    await getInvoiceData(ORDER_ID);
+    expect(issued).toHaveLength(1);
+    expect(issued[0]).toMatchObject({
+      order_id: ORDER_ID,
+      event_type: "INVOICE_ISSUED",
+      actor_type: "system",
+      actor_user_id: null,
+    });
+    expect(issued[0]?.["metadata"]).toMatchObject({
+      invoice_number: expect.any(String),
+    });
   });
 
   it("converges concurrent first-time claims on one number", async () => {

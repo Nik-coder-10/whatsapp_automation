@@ -8,6 +8,7 @@ import {
 } from "@/lib/payments/claims";
 import { normalizePhone } from "@/lib/validations/common";
 import { canTransition } from "@/lib/orders/transitions";
+import { logOrderEvent } from "@/lib/admin/orders";
 import type { OrderStatus, PaymentStatus } from "@/types";
 
 /**
@@ -147,6 +148,21 @@ export async function submitPaymentClaim(input: {
       409,
     );
   }
+  // Audit the claim (actor = the customer row that owns the order; the
+  // phone match above is the authorization). Uses the service-role
+  // client — guests have no session. A logging failure throws: the
+  // claim is recorded either way via payment_status, so the operator
+  // sees a loud 500 instead of a silent audit gap on retry-safe replay.
+  await logOrderEvent({
+    orderId: orderRow.id,
+    eventType: "PAYMENT_SUBMITTED",
+    actorType: "customer",
+    actorUserId: orderRow.customer_id,
+    fromStatus: orderRow.order_status,
+    toStatus: "payment_submitted",
+    metadata: { payment_method: "upi" },
+    client: admin,
+  });
   return {
     orderId: orderRow.id,
     orderNumber: orderRow.order_number,

@@ -1,5 +1,9 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  customerSafeTimeline,
+  type CustomerTimelineEntry,
+} from "@/lib/orders/events";
 import type { OrderStatus, PaymentStatus } from "@/types";
 
 const UUID_RE =
@@ -51,6 +55,12 @@ export interface PayableOrder {
   items: PayableOrderItem[];
   paymentReference: string | null;
   createdAt: string;
+  /**
+   * Customer-safe event feed (labels + timestamps only — built through
+   * the allowlist map, so actor names, notes, ids and metadata can
+   * never reach this projection).
+   */
+  timeline: CustomerTimelineEntry[];
 }
 
 const toPaise = (decimal: string): number =>
@@ -94,7 +104,7 @@ export async function getPayableOrder(
   } | null;
   if (orderError || !o) return null;
 
-  const [{ data: customer }, { data: items }, { data: payment }] =
+  const [{ data: customer }, { data: items }, { data: payment }, { data: events }] =
     await Promise.all([
       admin
         .from("customers")
@@ -113,6 +123,12 @@ export async function getPayableOrder(
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      admin
+        .from("order_events")
+        .select("event_type,created_at")
+        .eq("order_id", o.id)
+        .order("created_at", { ascending: true })
+        .limit(50),
     ]);
   const c = customer as unknown as { name: string; phone: string | null } | null;
   const rows = (items ?? []) as unknown as Array<{
@@ -124,6 +140,10 @@ export async function getPayableOrder(
     transaction_reference: string | null;
     status: PaymentStatus;
   } | null;
+  const eventRows = (events ?? []) as unknown as Array<{
+    event_type: string;
+    created_at: string;
+  }>;
 
   return {
     id: o.id,
@@ -153,6 +173,12 @@ export async function getPayableOrder(
     })),
     paymentReference: p?.transaction_reference ?? null,
     createdAt: o.created_at,
+    timeline: customerSafeTimeline(
+      eventRows.map((e) => ({
+        eventType: e.event_type,
+        createdAt: e.created_at,
+      })),
+    ),
     // No courier integration yet: no tracking columns exist, so this is
     // always null and the UI renders the "available after dispatch" note.
     tracking: null,

@@ -31,15 +31,48 @@ const LABELS: Record<OrderStatus, string> = {
 export function StatusActions({
   orderId,
   current,
+  hasPacked = false,
+  hasReady = false,
 }: {
   orderId: string;
   current: OrderStatus;
+  /** Derived server-side from the audit trail (never client state). */
+  hasPacked?: boolean;
+  hasReady?: boolean;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<OrderStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const next = ORDER_TRANSITIONS[current];
+  const canPack =
+    (current === "confirmed" || current === "processing") && !hasPacked;
+  const canReady =
+    (current === "confirmed" || current === "processing") &&
+    hasPacked &&
+    !hasReady;
+
+  const runStep = async (step: "packed" | "ready_for_dispatch") => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/orders/fulfillment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, step }),
+      });
+      const json = (await res.json()) as ApiResponse<unknown>;
+      if (!json.ok) {
+        setError(json.error.message);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const run = async () => {
     if (!target) return;
@@ -85,6 +118,20 @@ export function StatusActions({
             {s === "cancelled" ? "Cancel order" : `Move to ${LABELS[s]}`}
           </Button>
         ))}
+        {canPack ? (
+          <Button size="sm" variant="secondary" onClick={() => runStep("packed")}>
+            Mark packed
+          </Button>
+        ) : null}
+        {canReady ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => runStep("ready_for_dispatch")}
+          >
+            Mark ready for dispatch
+          </Button>
+        ) : null}
       </div>
       <Modal
         open={target !== null}
